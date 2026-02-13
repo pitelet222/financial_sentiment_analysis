@@ -1,7 +1,28 @@
+# =============================================================================
+# Financial Sentiment Analysis — Python Dependencies
+# =============================================================================
+# Install all dependencies with:
+#   pip install -r requirements.txt
+# =============================================================================
+
+# --- Data handling ---
 numpy
 pandas
+
+# --- Machine Learning ---
 scikit-learn
 torch
 transformers
-yfinance
+
+# --- Financial data ---
+yfinance                  # Yahoo Finance API wrapper (stock prices)
+
+# --- News data ---
+requests                  # HTTP requests to NewsAPI
+
+# --- Environment management ---
+python-dotenv             # Load API keys from .env file
+
+# --- API / Deployment ---
 fastapi
+uvicorn                   # ASGI server for FastAPI
