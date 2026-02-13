@@ -8,6 +8,7 @@
 # --- Data handling ---
 numpy
 pandas
+matplotlib
 
 # --- Machine Learning ---
 scikit-learn
@@ -26,3 +27,6 @@ python-dotenv             # Load API keys from .env file
 # --- API / Deployment ---
 fastapi
 uvicorn                   # ASGI server for FastAPI
+
+
+textblob
