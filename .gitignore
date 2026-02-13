@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+
+# Data
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+
+# Models
+models/saved_models/*
+models/checkpoints/*
+!models/**/.gitkeep
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+
+# Environment variables
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
