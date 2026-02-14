@@ -25,6 +25,3 @@ financial-sentiment-analysis/
 3. Install dependencies: `pip install -r requirements.txt`
 4. Start exploring in `notebooks/exploratory/`
 
-## Development Workflow
-
-Follow the step-by-step guide in DEVELOPMENT_STEPS.md
