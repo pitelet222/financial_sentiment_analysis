@@ -38,6 +38,7 @@ from typing import List, Optional
 
 import feedparser
 import pandas as pd
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
@@ -110,15 +111,79 @@ def _parse_feed(url: str, source_name: str, ticker: str) -> List[dict]:
 
 
 # =========================================================================
+# yfinance news helper
+# =========================================================================
+
+def _fetch_yfinance_news(ticker: str) -> List[dict]:
+    """Pull headlines from yfinance Ticker.news (Yahoo Finance API).
+
+    Returns a list of article dicts matching the project schema.
+    This complements the RSS feeds with Yahoo Finance's curated news
+    feed which often contains analyst notes and earnings coverage
+    that RSS misses.
+    """
+    try:
+        tick = yf.Ticker(ticker)
+        raw_news = tick.news  # list[dict] | None
+    except Exception as exc:
+        logger.warning("yfinance .news failed for %s: %s", ticker, exc)
+        return []
+
+    if not raw_news:
+        return []
+
+    articles: List[dict] = []
+    for item in raw_news:
+        content = item.get("content", item)  # v0.2.x nests under 'content'
+
+        title = content.get("title", "")
+        summary = content.get("summary", content.get("description", ""))
+
+        # Provider / source
+        provider = content.get("provider", {})
+        source = provider.get("displayName", "Yahoo Finance") if isinstance(provider, dict) else "Yahoo Finance"
+
+        # URL
+        canon = content.get("canonicalUrl", {})
+        url = canon.get("url", "") if isinstance(canon, dict) else content.get("url", content.get("link", ""))
+
+        # Published date
+        pub_str = content.get("pubDate", content.get("displayTime", ""))
+        published = None
+        if pub_str:
+            try:
+                published = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                pass
+
+        articles.append({
+            "title": title,
+            "summary": summary,
+            "source": f"{source} (yfinance)",
+            "url": url,
+            "published_at": published,
+            "authors": "",
+            "overall_sentiment_score": None,
+            "overall_sentiment_label": None,
+            "ticker_sentiment_score": None,
+            "ticker_sentiment_label": None,
+            "ticker": ticker,
+        })
+
+    return articles
+
+
+# =========================================================================
 # Public: fetch live news
 # =========================================================================
 
 def fetch_live_news(
     ticker: str,
     feeds: Optional[List[dict]] = None,
-    max_articles: int = 50,
+    max_articles: int = 60,
+    include_yfinance: bool = True,
 ) -> pd.DataFrame:
-    """Fetch recent headlines for *ticker* from public RSS feeds.
+    """Fetch recent headlines for *ticker* from public RSS feeds + yfinance.
 
     Parameters
     ----------
@@ -128,7 +193,9 @@ def fetch_live_news(
         Override the default RSS feed list.  Each dict must have keys
         ``url`` (with ``{ticker}`` placeholder), ``source_field``.
     max_articles : int
-        Cap on total articles returned (default 50).
+        Cap on total articles returned (default 60).
+    include_yfinance : bool
+        If True (default), also pull headlines from ``yfinance.Ticker.news``.
 
     Returns
     -------
@@ -143,6 +210,7 @@ def fetch_live_news(
 
     all_articles: List[dict] = []
 
+    # 1) RSS feeds
     for feed_cfg in feeds:
         url = feed_cfg["url"].format(ticker=ticker)
         source = feed_cfg.get("source_field", feed_cfg.get("name", "RSS"))
@@ -150,6 +218,12 @@ def fetch_live_news(
         all_articles.extend(articles)
         # Be polite — small delay between feeds
         time.sleep(0.3)
+
+    # 2) yfinance curated news
+    if include_yfinance:
+        yf_articles = _fetch_yfinance_news(ticker)
+        all_articles.extend(yf_articles)
+        logger.info("yfinance contributed %d articles for %s", len(yf_articles), ticker)
 
     if not all_articles:
         logger.info("No live articles found for %s", ticker)

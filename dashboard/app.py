@@ -119,6 +119,34 @@ st.markdown(
     .badge-pos  { background: #00c853; }
     .badge-neg  { background: #ff1744; }
     .badge-neu  { background: #ffc107; color: #333; }
+
+    /* Alert simulation cards */
+    .alert-card {
+        padding: 1.5rem;
+        border-radius: 1rem;
+        text-align: center;
+        color: white;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .alert-strong-buy  { background: linear-gradient(135deg, #00e676, #00c853); }
+    .alert-buy         { background: linear-gradient(135deg, #69f0ae, #00c853); }
+    .alert-hold        { background: linear-gradient(135deg, #ffc107, #ff8f00); }
+    .alert-sell         { background: linear-gradient(135deg, #ff5252, #ff1744); }
+    .alert-strong-sell  { background: linear-gradient(135deg, #ff1744, #b71c1c); }
+    .alert-no-data     { background: linear-gradient(135deg, #757575, #424242); }
+
+    .rule-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0.8rem;
+        border-bottom: 1px solid #eee;
+        font-size: 0.9rem;
+    }
+    .rule-pass { color: #00c853; font-weight: 600; }
+    .rule-fail { color: #ff1744; font-weight: 600; }
+    .rule-neutral { color: #888; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -609,7 +637,7 @@ else:
 st.markdown("---")
 st.subheader("🔴 Live Headlines — Real-Time Sentiment")
 st.caption(
-    "Fresh headlines from Google News & Yahoo Finance RSS feeds, "
+    "Fresh headlines from Google News, Yahoo Finance RSS & yfinance API, "
     "scored by FinBERT in real time.  Cache refreshes every hour."
 )
 
@@ -702,7 +730,7 @@ else:
 
     st.markdown("")
 
-    # ---- Color-coded headline table ----
+    # ---- Build table with Impact column ----
     tbl = live_df[["published_at", "title", "source",
                     "sentiment_score", "sentiment_label",
                     "sentiment_conf"]].copy()
@@ -711,6 +739,63 @@ else:
     tbl["Published"] = pd.to_datetime(tbl["Published"]).dt.strftime("%Y-%m-%d %H:%M")
     tbl["Confidence"] = (tbl["Confidence"] * 100).round(1)
 
+    # Impact = |score| × confidence  (0–100 scale)
+    # Headlines with strong sentiment AND high model certainty rank highest
+    tbl["Impact"] = (tbl["Score"].abs() * tbl["Confidence"]).round(1)
+
+    # ---- Sort controls ----
+    sort_col1, sort_col2 = st.columns([1, 3])
+    with sort_col1:
+        sort_by = st.selectbox(
+            "Sort headlines by",
+            ["Impact (strongest first)", "Newest first", "Score (most positive)", "Score (most negative)"],
+            index=0,
+            label_visibility="collapsed",
+        )
+
+    sort_map = {
+        "Impact (strongest first)": ("Impact", False),
+        "Newest first": ("Published", False),
+        "Score (most positive)": ("Score", False),
+        "Score (most negative)": ("Score", True),
+    }
+    col, asc = sort_map[sort_by]
+    tbl = tbl.sort_values(col, ascending=asc).reset_index(drop=True)
+
+    # ---- Top-5 impact bar chart ----
+    top5 = tbl.head(5).copy()
+    if sort_by == "Impact (strongest first)" and len(top5) > 0:
+        # Truncate long headlines for the chart
+        top5["Short"] = top5["Headline"].str[:60].where(
+            top5["Headline"].str.len() <= 60,
+            top5["Headline"].str[:57] + "…"
+        )
+        top5["Color"] = top5["Score"].apply(
+            lambda s: "#00c853" if s > 0.1 else ("#ff1744" if s < -0.1 else "#ff8f00")
+        )
+
+        fig_impact = go.Figure(go.Bar(
+            x=top5["Impact"].values[::-1],
+            y=top5["Short"].values[::-1],
+            orientation="h",
+            marker_color=top5["Color"].values[::-1],
+            text=[f"{s:+.2f}" for s in top5["Score"].values[::-1]],
+            textposition="auto",
+            hovertemplate="<b>%{y}</b><br>Impact: %{x:.1f}<br>Score: %{text}<extra></extra>",
+        ))
+        fig_impact.update_layout(
+            title="Top 5 Most Impactful Headlines",
+            xaxis_title="Impact (|score| × confidence)",
+            yaxis_title="",
+            height=260,
+            margin=dict(l=20, r=20, t=40, b=30),
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_impact, key="impact_chart", width="stretch")
+
+    # ---- Color-coded headline table ----
     def _clr_label(val):
         colors = {"positive": "#00c853", "negative": "#ff1744", "neutral": "#ff8f00"}
         c = colors.get(str(val).lower(), "#666")
@@ -727,13 +812,432 @@ else:
         except (ValueError, TypeError):
             return ""
 
+    def _clr_impact(val):
+        try:
+            v = float(val)
+            if v > 30:
+                return "color: #e040fb; font-weight: 700"
+            elif v > 15:
+                return "color: #7c4dff; font-weight: 600"
+            return "opacity: 0.7"
+        except (ValueError, TypeError):
+            return ""
+
     styled_live = (
         tbl.style
         .map(_clr_label, subset=["Sentiment"])
         .map(_clr_score, subset=["Score"])
-        .format({"Score": "{:+.3f}", "Confidence": "{:.1f}%"})
+        .map(_clr_impact, subset=["Impact"])
+        .format({"Score": "{:+.3f}", "Confidence": "{:.1f}%", "Impact": "{:.1f}"})
     )
     st.dataframe(styled_live, width="stretch", height=420)
+
+# =========================================================================
+# Multi-Ticker Comparison
+# =========================================================================
+
+st.markdown("---")
+st.subheader("📊 Multi-Ticker Sentiment Comparison")
+st.caption(
+    "Compare live FinBERT sentiment across multiple tickers.  "
+    "Select up to 6 tickers below."
+)
+
+# Ticker input — default to project tickers + a few popular ones
+_COMPARISON_DEFAULTS = ["AAPL", "MSFT"]
+_POPULAR_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META"]
+
+compare_tickers = st.multiselect(
+    "Tickers to compare",
+    options=_POPULAR_TICKERS,
+    default=_COMPARISON_DEFAULTS,
+    max_selections=6,
+    help="Pick 2–6 tickers. Each one fetches live news + runs FinBERT.",
+)
+
+if len(compare_tickers) >= 2:
+    # Fetch & score each ticker (reuses the cached functions above)
+    comp_rows: list[dict] = []
+    with st.spinner("Fetching & scoring headlines for all tickers …"):
+        for tk in compare_tickers:
+            tk_df = score_live_headlines(tk)
+            if tk_df.empty:
+                comp_rows.append({
+                    "Ticker": tk, "Articles": 0, "Avg Score": 0.0,
+                    "Positive %": 0.0, "Negative %": 0.0,
+                    "Top Impact": 0.0, "Signal": "NO DATA",
+                })
+                continue
+            scores = tk_df["sentiment_score"].dropna()
+            avg = float(scores.mean())
+            ppos = float((scores > 0.1).mean() * 100)
+            pneg = float((scores < -0.1).mean() * 100)
+            impact_vals = (scores.abs() * tk_df["sentiment_conf"].dropna()).dropna()
+            top_imp = float(impact_vals.max() * 100) if len(impact_vals) else 0.0
+            if avg > 0.15:
+                sig = "BULLISH"
+            elif avg < -0.15:
+                sig = "BEARISH"
+            else:
+                sig = "NEUTRAL"
+            comp_rows.append({
+                "Ticker": tk, "Articles": len(tk_df),
+                "Avg Score": round(avg, 4),
+                "Positive %": round(ppos, 1),
+                "Negative %": round(pneg, 1),
+                "Top Impact": round(top_imp, 1),
+                "Signal": sig,
+            })
+
+    comp_df = pd.DataFrame(comp_rows)
+
+    # ---- Summary cards row ----
+    card_cols = st.columns(len(compare_tickers))
+    for idx, row in comp_df.iterrows():
+        sig_css = {
+            "BULLISH": "bullish", "BEARISH": "bearish",
+            "NEUTRAL": "neutral-card", "NO DATA": "neutral-card",
+        }.get(row["Signal"], "neutral-card")
+        with card_cols[idx]:
+            st.markdown(
+                f'<div class="signal-card {sig_css}" style="padding:0.8rem;">'
+                f'<div style="font-size:1.2rem;font-weight:700;">{row["Ticker"]}</div>'
+                f'<div style="font-size:1.4rem;">{row["Signal"]}</div>'
+                f'<div style="font-size:0.8rem;opacity:0.9;">'
+                f'Score: {row["Avg Score"]:+.3f} · {row["Articles"]} articles</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("")
+
+    # ---- Grouped bar chart: Avg Score per ticker ----
+    bar_colors = [
+        "#00c853" if s > 0.1 else ("#ff1744" if s < -0.1 else "#ff8f00")
+        for s in comp_df["Avg Score"]
+    ]
+
+    fig_comp = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Average Sentiment Score", "Positive vs Negative %"],
+        horizontal_spacing=0.12,
+    )
+
+    # Left: avg score bars
+    fig_comp.add_trace(
+        go.Bar(
+            x=comp_df["Ticker"], y=comp_df["Avg Score"],
+            marker_color=bar_colors,
+            text=[f"{s:+.3f}" for s in comp_df["Avg Score"]],
+            textposition="outside",
+            name="Avg Score",
+            showlegend=False,
+        ),
+        row=1, col=1,
+    )
+
+    # Right: stacked positive / negative %
+    fig_comp.add_trace(
+        go.Bar(
+            x=comp_df["Ticker"], y=comp_df["Positive %"],
+            marker_color="#00c853", name="Positive %",
+            text=[f"{v:.0f}%" for v in comp_df["Positive %"]],
+            textposition="inside",
+        ),
+        row=1, col=2,
+    )
+    fig_comp.add_trace(
+        go.Bar(
+            x=comp_df["Ticker"], y=comp_df["Negative %"],
+            marker_color="#ff1744", name="Negative %",
+            text=[f"{v:.0f}%" for v in comp_df["Negative %"]],
+            textposition="inside",
+        ),
+        row=1, col=2,
+    )
+
+    fig_comp.update_layout(
+        height=350,
+        barmode="group",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=20, r=20, t=40, b=30),
+        legend=dict(orientation="h", y=-0.15),
+    )
+    fig_comp.update_yaxes(title_text="Score", row=1, col=1)
+    fig_comp.update_yaxes(title_text="%", row=1, col=2)
+
+    st.plotly_chart(fig_comp, key="comp_chart", width="stretch")
+
+    # ---- Comparison table ----
+    def _clr_signal(val):
+        c = {"BULLISH": "#00c853", "BEARISH": "#ff1744", "NEUTRAL": "#ff8f00",
+             "NO DATA": "#666"}.get(val, "#666")
+        return f"color: {c}; font-weight: 700"
+
+    styled_comp = (
+        comp_df.style
+        .map(_clr_signal, subset=["Signal"])
+        .format({
+            "Avg Score": "{:+.4f}",
+            "Positive %": "{:.1f}%",
+            "Negative %": "{:.1f}%",
+            "Top Impact": "{:.1f}",
+        })
+    )
+    st.dataframe(styled_comp, width="stretch", hide_index=True)
+
+elif len(compare_tickers) == 1:
+    st.info("Select at least 2 tickers to compare.")
+else:
+    st.info("Select tickers above to see a side-by-side comparison.")
+
+# =========================================================================
+# Alert Simulation Panel
+# =========================================================================
+
+st.markdown("---")
+st.subheader("🚨 Alert Simulation — Rule-Based Signal Engine")
+st.caption(
+    "Configure sentiment thresholds below. The engine evaluates live headlines "
+    "against your rules and fires a BUY / SELL / HOLD signal.  "
+    "No black-box LLM — every rule is transparent and deterministic."
+)
+
+# ---- Threshold controls ----
+alert_c1, alert_c2, alert_c3, alert_c4 = st.columns(4)
+
+with alert_c1:
+    thresh_score = st.slider(
+        "Min |avg score| for signal",
+        min_value=0.01, max_value=0.50, value=0.10, step=0.01,
+        help="How strong must the average sentiment be to trigger a BUY/SELL?",
+    )
+with alert_c2:
+    thresh_conf = st.slider(
+        "Min confidence %",
+        min_value=10, max_value=90, value=35, step=5,
+        help="Minimum avg per-headline confidence to trust the signal.",
+    )
+with alert_c3:
+    thresh_dominance = st.slider(
+        "Min dominant % (pos or neg)",
+        min_value=20, max_value=90, value=45, step=5,
+        help="What % of headlines must lean the same way?",
+    )
+with alert_c4:
+    thresh_articles = st.slider(
+        "Min article count",
+        min_value=1, max_value=50, value=5, step=1,
+        help="Require at least this many articles for a signal.",
+    )
+
+st.markdown("")
+
+# Strong signal requires higher thresholds
+strong_score = thresh_score * 2
+strong_dominance = min(thresh_dominance + 15, 95)
+
+# ---- Evaluate rules against live data for the selected ticker ----
+alert_df = score_live_headlines(selected_ticker)
+
+if alert_df.empty or len(alert_df) == 0:
+    st.markdown(
+        '<div class="alert-card alert-no-data">'
+        '<div style="font-size:2.5rem;">NO DATA</div>'
+        '<div style="font-size:0.9rem;opacity:0.9;">'
+        f'No live headlines available for {selected_ticker}</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    a_scores = alert_df["sentiment_score"].dropna()
+    a_confs = alert_df["sentiment_conf"].dropna()
+    a_avg = float(a_scores.mean())
+    a_avg_conf = float(a_confs.mean()) * 100
+    a_pct_pos = float((a_scores > 0.1).mean()) * 100
+    a_pct_neg = float((a_scores < -0.1).mean()) * 100
+    a_count = len(alert_df)
+    a_dominant_pct = max(a_pct_pos, a_pct_neg)
+    a_direction = "positive" if a_pct_pos >= a_pct_neg else "negative"
+
+    # ---- Rule evaluation ----
+    rules = [
+        {
+            "name": f"Avg sentiment |score| ≥ {thresh_score:.2f}",
+            "value": f"{abs(a_avg):.3f}",
+            "passed": abs(a_avg) >= thresh_score,
+        },
+        {
+            "name": f"Avg confidence ≥ {thresh_conf}%",
+            "value": f"{a_avg_conf:.1f}%",
+            "passed": a_avg_conf >= thresh_conf,
+        },
+        {
+            "name": f"Dominant sentiment ≥ {thresh_dominance}%",
+            "value": f"{a_dominant_pct:.1f}% {a_direction}",
+            "passed": a_dominant_pct >= thresh_dominance,
+        },
+        {
+            "name": f"Article count ≥ {thresh_articles}",
+            "value": f"{a_count}",
+            "passed": a_count >= thresh_articles,
+        },
+    ]
+
+    # Strong-signal extra rules
+    strong_rules = [
+        {
+            "name": f"Strong: |score| ≥ {strong_score:.2f}",
+            "value": f"{abs(a_avg):.3f}",
+            "passed": abs(a_avg) >= strong_score,
+        },
+        {
+            "name": f"Strong: dominance ≥ {strong_dominance}%",
+            "value": f"{a_dominant_pct:.1f}%",
+            "passed": a_dominant_pct >= strong_dominance,
+        },
+    ]
+
+    base_pass = all(r["passed"] for r in rules)
+    strong_pass = base_pass and all(r["passed"] for r in strong_rules)
+    n_passed = sum(r["passed"] for r in rules)
+
+    # Determine signal
+    if not base_pass:
+        signal_label = "HOLD"
+        signal_css = "alert-hold"
+        signal_reason = f"{n_passed}/4 rules passed — insufficient conviction."
+    elif strong_pass and a_avg > 0:
+        signal_label = "STRONG BUY"
+        signal_css = "alert-strong-buy"
+        signal_reason = "All base + strong rules passed with positive bias."
+    elif strong_pass and a_avg < 0:
+        signal_label = "STRONG SELL"
+        signal_css = "alert-strong-sell"
+        signal_reason = "All base + strong rules passed with negative bias."
+    elif a_avg > 0:
+        signal_label = "BUY"
+        signal_css = "alert-buy"
+        signal_reason = "All 4 base rules passed — sentiment leans positive."
+    else:
+        signal_label = "SELL"
+        signal_css = "alert-sell"
+        signal_reason = "All 4 base rules passed — sentiment leans negative."
+
+    # ---- Signal card ----
+    sig_col, detail_col = st.columns([1, 1.6])
+
+    with sig_col:
+        st.markdown(
+            f'<div class="alert-card {signal_css}">'
+            f'<div style="font-size:1rem;opacity:0.9;">'
+            f'{selected_ticker} — Alert Signal</div>'
+            f'<div style="font-size:2.8rem;margin:0.3rem 0;">'
+            f'{signal_label}</div>'
+            f'<div style="font-size:0.85rem;opacity:0.9;">{signal_reason}</div>'
+            f'<div style="font-size:0.75rem;opacity:0.7;margin-top:0.4rem;">'
+            f'Based on {a_count} live headlines</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ---- Rule breakdown ----
+    with detail_col:
+        st.markdown("**Rule Breakdown**")
+        all_rules = rules + strong_rules
+        breakdown_html = '<div style="border:1px solid #e0e0e0; border-radius:0.5rem; overflow:hidden;">'
+        for r in all_rules:
+            icon = "✅" if r["passed"] else "❌"
+            css_cls = "rule-pass" if r["passed"] else "rule-fail"
+            breakdown_html += (
+                f'<div class="rule-row">'
+                f'<span>{icon} {r["name"]}</span>'
+                f'<span class="{css_cls}">{r["value"]}</span>'
+                f'</div>'
+            )
+        breakdown_html += '</div>'
+        st.markdown(breakdown_html, unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # ---- Gauge chart: signal strength ----
+    # Map signal to a 0-100 scale for a gauge visualization
+    signal_strength = min(abs(a_avg) / 0.5 * 100, 100)
+    gauge_color = {
+        "STRONG BUY": "#00e676", "BUY": "#00c853",
+        "HOLD": "#ff8f00",
+        "SELL": "#ff5252", "STRONG SELL": "#ff1744",
+    }.get(signal_label, "#888")
+
+    fig_gauge = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=signal_strength,
+        title={"text": "Signal Strength", "font": {"size": 16}},
+        number={"suffix": "%", "font": {"size": 28}},
+        delta={"reference": 50, "increasing": {"color": "#00c853"},
+               "decreasing": {"color": "#ff1744"}},
+        gauge={
+            "axis": {"range": [0, 100], "tickwidth": 1},
+            "bar": {"color": gauge_color, "thickness": 0.3},
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [0, 25], "color": "rgba(255,23,68,0.15)"},
+                {"range": [25, 50], "color": "rgba(255,193,7,0.15)"},
+                {"range": [50, 75], "color": "rgba(105,240,174,0.15)"},
+                {"range": [75, 100], "color": "rgba(0,200,83,0.15)"},
+            ],
+            "threshold": {
+                "line": {"color": "white", "width": 3},
+                "thickness": 0.8,
+                "value": signal_strength,
+            },
+        },
+    ))
+    fig_gauge.update_layout(
+        height=250,
+        margin=dict(l=30, r=30, t=40, b=10),
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+
+    g1, g2 = st.columns([1, 1])
+    with g1:
+        st.plotly_chart(fig_gauge, key="alert_gauge", width="stretch")
+    with g2:
+        # Summary metrics
+        st.markdown(
+            '<div class="metric-card" style="margin-bottom:0.6rem;">'
+            '<div class="metric-label">Avg Sentiment Score</div>'
+            f'<div class="metric-value">{a_avg:+.4f}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="metric-card" style="margin-bottom:0.6rem;">'
+            '<div class="metric-label">Avg Model Confidence</div>'
+            f'<div class="metric-value">{a_avg_conf:.1f}%</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="metric-card">'
+            '<div class="metric-label">Dominant Direction</div>'
+            f'<div class="metric-value">{a_dominant_pct:.0f}% {a_direction}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ---- Disclaimer ----
+    st.markdown(
+        "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
+        "margin-top:1rem;'>⚠️ This is a <b>simulation</b> for educational "
+        "purposes only. Not financial advice. Always do your own research "
+        "before making investment decisions.</div>",
+        unsafe_allow_html=True,
+    )
 
 # =========================================================================
 # Footer
