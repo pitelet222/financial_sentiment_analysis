@@ -40,6 +40,8 @@ from src.data.data_loader import (
     DEFAULT_START,
     DEFAULT_END,
 )
+from src.data.news_fetcher import fetch_and_cache
+from src.models.sentiment_analyzer import SentimentAnalyzer
 
 # =========================================================================
 # Page configuration
@@ -100,6 +102,23 @@ st.markdown(
     /* Positive / negative sentiment colours in dataframes */
     .pos-sent { color: #00c853; font-weight: 600; }
     .neg-sent { color: #ff1744; font-weight: 600; }
+
+    /* Live news headline rows */
+    .live-row {
+        padding: 0.6rem 0;
+        border-bottom: 1px solid #eee;
+    }
+    .live-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 0.3rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: white;
+    }
+    .badge-pos  { background: #00c853; }
+    .badge-neg  { background: #ff1744; }
+    .badge-neu  { background: #ffc107; color: #333; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -582,6 +601,139 @@ if not df.empty:
 
 else:
     st.warning("No data found for the selected ticker and date range.")
+
+# =========================================================================
+# Live Headlines Section
+# =========================================================================
+
+st.markdown("---")
+st.subheader("🔴 Live Headlines — Real-Time Sentiment")
+st.caption(
+    "Fresh headlines from Google News & Yahoo Finance RSS feeds, "
+    "scored by FinBERT in real time.  Cache refreshes every hour."
+)
+
+
+@st.cache_resource(show_spinner="Loading FinBERT model …")
+def load_model() -> SentimentAnalyzer:
+    """Load the sentiment model once (singleton across reruns)."""
+    model_path = Path(__file__).resolve().parent.parent / "models" / "saved_models" / "finbert_finetuned"
+    if model_path.exists():
+        return SentimentAnalyzer.load(model_path)
+    return SentimentAnalyzer()  # fallback to base ProsusAI/finbert
+
+
+@st.cache_data(show_spinner="Fetching live news …", ttl=3600)
+def get_live_news(ticker: str) -> pd.DataFrame:
+    """Fetch live RSS news with 1-hour cache."""
+    return fetch_and_cache(ticker, ttl=3600)
+
+
+@st.cache_data(show_spinner="Scoring headlines with FinBERT …", ttl=3600)
+def score_live_headlines(ticker: str) -> pd.DataFrame:
+    """Fetch live headlines and score them with FinBERT."""
+    raw = get_live_news(ticker)
+    if raw.empty:
+        return raw
+
+    analyzer = load_model()
+
+    # Run FinBERT on titles (headlines carry most signal)
+    titles = raw["title"].fillna("").tolist()
+    preds = analyzer.predict_batch(titles, batch_size=16, show_progress=False)
+
+    raw = raw.copy()
+    raw["sentiment_score"] = [p["score"] for p in preds]
+    raw["sentiment_label"] = [p["label"] for p in preds]
+    raw["sentiment_conf"] = [p["confidence"] for p in preds]
+    raw["prob_positive"] = [p["positive"] for p in preds]
+    raw["prob_negative"] = [p["negative"] for p in preds]
+    raw["prob_neutral"] = [p["neutral"] for p in preds]
+    return raw
+
+
+live_df = score_live_headlines(selected_ticker)
+
+if live_df.empty:
+    st.info(f"No live headlines found for {selected_ticker}.")
+else:
+    # ---- Live signal card row ----
+    live_scores = live_df["sentiment_score"].dropna()
+    live_avg = float(live_scores.mean()) if len(live_scores) else 0.0
+
+    if live_avg > 0.15:
+        lbl, css = "BULLISH", "bullish"
+    elif live_avg < -0.15:
+        lbl, css = "BEARISH", "bearish"
+    else:
+        lbl, css = "NEUTRAL", "neutral-card"
+    live_conf = min(abs(live_avg) / 0.5 * 100, 100)
+
+    lc1, lc2, lc3 = st.columns([1.4, 1, 1])
+    with lc1:
+        st.markdown(
+            f'<div class="signal-card {css}">'
+            f'<div style="font-size:0.85rem;opacity:0.9;">Live Signal</div>'
+            f'<div style="font-size:2rem;">{lbl}</div>'
+            f'<div style="font-size:0.9rem;">Confidence: {live_conf:.0f}%</div>'
+            f'<div style="font-size:0.75rem;opacity:0.8;">'
+            f'Avg score: {live_avg:+.3f} · {len(live_df)} articles</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with lc2:
+        pct_pos = (live_scores > 0.1).mean() * 100
+        st.markdown(
+            '<div class="metric-card">'
+            '<div class="metric-label">Positive %</div>'
+            f'<div class="metric-value delta-pos">{pct_pos:.0f}%</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    with lc3:
+        pct_neg = (live_scores < -0.1).mean() * 100
+        st.markdown(
+            '<div class="metric-card">'
+            '<div class="metric-label">Negative %</div>'
+            f'<div class="metric-value delta-neg">{pct_neg:.0f}%</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("")
+
+    # ---- Color-coded headline table ----
+    tbl = live_df[["published_at", "title", "source",
+                    "sentiment_score", "sentiment_label",
+                    "sentiment_conf"]].copy()
+    tbl.columns = ["Published", "Headline", "Source",
+                    "Score", "Sentiment", "Confidence"]
+    tbl["Published"] = pd.to_datetime(tbl["Published"]).dt.strftime("%Y-%m-%d %H:%M")
+    tbl["Confidence"] = (tbl["Confidence"] * 100).round(1)
+
+    def _clr_label(val):
+        colors = {"positive": "#00c853", "negative": "#ff1744", "neutral": "#ff8f00"}
+        c = colors.get(str(val).lower(), "#666")
+        return f"color: {c}; font-weight: 600"
+
+    def _clr_score(val):
+        try:
+            v = float(val)
+            if v > 0.1:
+                return "color: #00c853; font-weight: 600"
+            elif v < -0.1:
+                return "color: #ff1744; font-weight: 600"
+            return "color: #ff8f00"
+        except (ValueError, TypeError):
+            return ""
+
+    styled_live = (
+        tbl.style
+        .map(_clr_label, subset=["Sentiment"])
+        .map(_clr_score, subset=["Score"])
+        .format({"Score": "{:+.3f}", "Confidence": "{:.1f}%"})
+    )
+    st.dataframe(styled_live, width="stretch", height=420)
 
 # =========================================================================
 # Footer

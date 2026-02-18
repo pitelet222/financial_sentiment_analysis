@@ -23,6 +23,7 @@ yfinance                  # Yahoo Finance API wrapper (stock prices)
 
 # --- News data ---
 requests                  # HTTP requests to NewsAPI
+feedparser                # RSS feed parsing for live news pipeline
 
 # --- Environment management ---
 python-dotenv             # Load API keys from .env file
