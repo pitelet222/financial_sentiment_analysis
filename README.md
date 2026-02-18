@@ -37,11 +37,13 @@
 
 ## Model Performance (Walk-Forward Validation)
 
-| Horizon | Accuracy | F1 | AUC | Precision | Recall |
-|---------|----------|------|------|-----------|--------|
-| Daily (1-day) | 52.9% | 62.9% | 51.5% | 54.8% | 73.8% |
-| Weekly (5-day) | 63.4% | 70.4% | 66.8% | 68.0% | 73.1% |
-| Monthly (20-day) | 72.6% | 81.7% | 73.0% | 74.6% | 90.3% |
+| Horizon | XGBoost | Naive Baseline | Lift | F1 | AUC |
+|---------|---------|----------------|------|------|------|
+| Daily (1-day) | **52.9%** | 53.3% (always UP) | −0.4% | 62.9% | 51.5% |
+| Weekly (5-day) | **63.4%** | 57.7% (always UP) | **+5.7%** | 70.4% | 66.8% |
+| Monthly (20-day) | **72.6%** | 64.0% (always UP) | **+8.6%** | 81.7% | 73.0% |
+
+> **Naive baseline** = always predict the majority class (UP). The market had a bullish bias during this period (53–64% of days were UP), so any useful model must beat these numbers. The 1d model is at baseline — expected given only 2/19 tickers have sentiment data. The 5d and 20d models show meaningful lift, especially monthly (+8.6%), driven by technical indicators and VIX.
 
 All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 251 trading days. Feature set: 38 features (9 sentiment + 3 price + 19 technical + 7 engineered).
 
@@ -63,6 +65,8 @@ financial-sentiment-analysis/
 │       └── xgboost_return_20d/ # Monthly return predictor
 ├── notebooks/
 │   ├── evaluation/             # News/price exploration, baseline, FinBERT eval
+│   ├── exploratory/
+│   │   └── 01_sentiment_price_eda.ipynb  # EDA story: sentiment × price dynamics
 │   └── modeling/               # FinBERT fine-tuning notebook
 ├── reports/
 │   └── metrics/                # Training reports & walk-forward metrics
