@@ -66,13 +66,6 @@ MARKET_OPEN_MINUTE = 30
 MARKET_CLOSE_HOUR = 16
 MARKET_CLOSE_MINUTE = 0
 
-# Sentiment columns we aggregate
-_SENTIMENT_COLS = [
-    "overall_sentiment_score",
-    "ticker_sentiment_score",
-]
-
-
 # =========================================================================
 # 1. LOW-LEVEL LOADERS
 # =========================================================================

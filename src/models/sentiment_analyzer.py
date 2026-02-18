@@ -168,7 +168,8 @@ class SentimentAnalyzer:
             - ``score`` : float — P(positive) − P(negative), range [-1, +1]
         """
         if preprocess:
-            text = preprocess_text(text, max_length=self.max_length - 2)
+            # Approximate max chars: ~4 chars/token is a safe heuristic
+            text = preprocess_text(text, max_length=(self.max_length - 2) * 4)
 
         if not text or not text.strip():
             return self._neutral_result()
@@ -225,7 +226,7 @@ class SentimentAnalyzer:
             # Preprocess
             if preprocess:
                 cleaned = [
-                    preprocess_text(t, max_length=self.max_length - 2)
+                    preprocess_text(t, max_length=(self.max_length - 2) * 4)
                     if isinstance(t, str) else ""
                     for t in batch_texts
                 ]

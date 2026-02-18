@@ -10,10 +10,13 @@ numpy
 pandas
 matplotlib
 
+
 # --- Machine Learning ---
 scikit-learn
 torch
 transformers
+scipy
+seaborn
 
 # --- Financial data ---
 yfinance                  # Yahoo Finance API wrapper (stock prices)
@@ -28,5 +31,8 @@ python-dotenv             # Load API keys from .env file
 fastapi
 uvicorn                   # ASGI server for FastAPI
 
+# --- Dashboard ---
+streamlit                 # Interactive web dashboard
+plotly                    # Interactive charts for Streamlit
 
 textblob
