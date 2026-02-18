@@ -4,44 +4,44 @@
     "5d",
     "20d"
   ],
-  "total_elapsed_minutes": 2.6,
+  "total_elapsed_minutes": 2.9,
   "data_path": "C:\\Users\\yagoc\\OneDrive\\Escritorio\\Pite\\pite_py_projects\\financial-sentiment-analysis\\data\\processed\\merged_2025-02-13_to_2026-02-13.csv",
   "min_train_days": 60,
   "results": {
     "1d": {
       "label": "Daily (next day)",
-      "elapsed_seconds": 67.2,
-      "accuracy": 0.5290858725761773,
-      "f1": 0.6277372262773723,
-      "roc_auc": 0.5172969332938797,
-      "precision": 0.5473058973271108,
-      "recall": 0.7358813462635482,
-      "n_predictions": 3249,
+      "elapsed_seconds": 70.8,
+      "accuracy": 0.5086705202312138,
+      "f1": 0.6116751269035533,
+      "roc_auc": 0.4934005037364887,
+      "precision": 0.5346051464063887,
+      "recall": 0.7147093712930012,
+      "n_predictions": 3114,
       "top_5_features": {
-        "JNJ": {
-          "accuracy": 0.6198830409356725,
-          "f1": 0.721030042918455,
-          "n_predictions": 171
+        "WMT": {
+          "accuracy": 0.6158536585365854,
+          "f1": 0.7014218009478673,
+          "n_predictions": 164
         },
-        "AAPL": {
-          "accuracy": 0.5906432748538012,
-          "f1": 0.6666666666666666,
-          "n_predictions": 171
+        "JPM": {
+          "accuracy": 0.5853658536585366,
+          "f1": 0.7017543859649122,
+          "n_predictions": 164
+        },
+        "JNJ": {
+          "accuracy": 0.5802469135802469,
+          "f1": 0.6792452830188679,
+          "n_predictions": 162
+        },
+        "GOOGL": {
+          "accuracy": 0.573170731707317,
+          "f1": 0.6698113207547169,
+          "n_predictions": 164
         },
         "XOM": {
-          "accuracy": 0.5906432748538012,
-          "f1": 0.6982758620689655,
-          "n_predictions": 171
-        },
-        "BA": {
-          "accuracy": 0.5672514619883041,
-          "f1": 0.6636363636363637,
-          "n_predictions": 171
-        },
-        "META": {
-          "accuracy": 0.5672514619883041,
-          "f1": 0.6224489795918368,
-          "n_predictions": 171
+          "accuracy": 0.573170731707317,
+          "f1": 0.6666666666666666,
+          "n_predictions": 164
         }
       },
       "hyperparameters": {
@@ -59,38 +59,38 @@
     },
     "5d": {
       "label": "Weekly (5-day)",
-      "elapsed_seconds": 58.7,
-      "accuracy": 0.6043119847812302,
-      "f1": 0.6780185758513931,
-      "roc_auc": 0.6362708825401271,
-      "precision": 0.6560159760359461,
-      "recall": 0.7015483182060865,
-      "n_predictions": 3154,
+      "elapsed_seconds": 68.0,
+      "accuracy": 0.6237164624047697,
+      "f1": 0.6926406926406926,
+      "roc_auc": 0.6556107009388388,
+      "precision": 0.6751054852320675,
+      "recall": 0.7111111111111111,
+      "n_predictions": 3019,
       "top_5_features": {
-        "XOM": {
-          "accuracy": 0.6807228915662651,
-          "f1": 0.7336683417085427,
-          "n_predictions": 166
-        },
-        "NVDA": {
-          "accuracy": 0.6506024096385542,
-          "f1": 0.7238095238095238,
-          "n_predictions": 166
-        },
-        "CVX": {
-          "accuracy": 0.6445783132530121,
-          "f1": 0.7377777777777778,
-          "n_predictions": 166
-        },
         "UNH": {
-          "accuracy": 0.6445783132530121,
-          "f1": 0.6628571428571428,
-          "n_predictions": 166
+          "accuracy": 0.7169811320754716,
+          "f1": 0.7457627118644068,
+          "n_predictions": 159
+        },
+        "BA": {
+          "accuracy": 0.7044025157232704,
+          "f1": 0.7661691542288557,
+          "n_predictions": 159
         },
         "AAPL": {
-          "accuracy": 0.6385542168674698,
-          "f1": 0.6875,
-          "n_predictions": 166
+          "accuracy": 0.6666666666666666,
+          "f1": 0.7103825136612022,
+          "n_predictions": 159
+        },
+        "NVDA": {
+          "accuracy": 0.660377358490566,
+          "f1": 0.7326732673267327,
+          "n_predictions": 159
+        },
+        "BAC": {
+          "accuracy": 0.6540880503144654,
+          "f1": 0.7208121827411168,
+          "n_predictions": 159
         }
       },
       "hyperparameters": {
@@ -108,38 +108,38 @@
     },
     "20d": {
       "label": "Monthly (20-day)",
-      "elapsed_seconds": 27.4,
-      "accuracy": 0.7141861275705821,
-      "f1": 0.8104484512251503,
-      "roc_auc": 0.7095586089221166,
-      "precision": 0.7409129332206256,
-      "recall": 0.8943877551020408,
-      "n_predictions": 2869,
+      "elapsed_seconds": 33.3,
+      "accuracy": 0.7136064374542794,
+      "f1": 0.8088845496704906,
+      "roc_auc": 0.728196159960866,
+      "precision": 0.737427681352915,
+      "recall": 0.8956756756756756,
+      "n_predictions": 2734,
       "top_5_features": {
-        "AAPL": {
-          "accuracy": 0.8609271523178808,
-          "f1": 0.9149797570850202,
-          "n_predictions": 151
-        },
         "GOOGL": {
-          "accuracy": 0.8543046357615894,
-          "f1": 0.9191176470588235,
-          "n_predictions": 151
-        },
-        "JNJ": {
-          "accuracy": 0.8543046357615894,
-          "f1": 0.9214285714285714,
-          "n_predictions": 151
+          "accuracy": 0.8680555555555556,
+          "f1": 0.9266409266409267,
+          "n_predictions": 144
         },
         "CAT": {
-          "accuracy": 0.847682119205298,
-          "f1": 0.9175627240143369,
-          "n_predictions": 151
+          "accuracy": 0.8611111111111112,
+          "f1": 0.9253731343283582,
+          "n_predictions": 144
+        },
+        "JNJ": {
+          "accuracy": 0.852112676056338,
+          "f1": 0.9201520912547528,
+          "n_predictions": 142
+        },
+        "AAPL": {
+          "accuracy": 0.8194444444444444,
+          "f1": 0.8888888888888888,
+          "n_predictions": 144
         },
         "CVX": {
-          "accuracy": 0.7682119205298014,
-          "f1": 0.8430493273542601,
-          "n_predictions": 151
+          "accuracy": 0.7708333333333334,
+          "f1": 0.8374384236453202,
+          "n_predictions": 144
         }
       },
       "hyperparameters": {

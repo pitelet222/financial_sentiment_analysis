@@ -76,10 +76,22 @@ TECHNICAL_FEATURES = [
     "macd_signal",
     "macd_histogram",
     "bb_pct_b",
+    "bb_width",
     "atr_14",
     "distance_52w_high",
     "distance_52w_low",
     "volume_zscore",
+    "stoch_k",
+    "stoch_d",
+    "williams_r",
+    "obv_slope",
+    "ema_cross",
+    "adx_14",
+    "cci_20",
+    "mfi_14",
+    "roc_10",
+    "vwap_distance",
+    "keltner_pos",
     "VIX_close",
 ]
 
@@ -87,8 +99,12 @@ TECHNICAL_FEATURES = [
 ENGINEERED_FEATURES = [
     "return_lag2",
     "return_lag3",
+    "return_lag5",
+    "return_lag10",
     "volatility_5d",
+    "volatility_10d",
     "avg_return_5d",
+    "avg_return_10d",
     "sentiment_momentum",  # 3d rolling - 5d rolling
     "news_has_coverage",   # binary: any articles?
 ]
@@ -146,15 +162,25 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     # Additional return lags
     df["return_lag2"] = df.groupby("ticker")["daily_return"].shift(1)
     df["return_lag3"] = df.groupby("ticker")["daily_return"].shift(2)
+    df["return_lag5"] = df.groupby("ticker")["daily_return"].shift(4)
+    df["return_lag10"] = df.groupby("ticker")["daily_return"].shift(9)
 
-    # 5-day volatility and average return
+    # 5-day and 10-day volatility and average return
     df["volatility_5d"] = (
         df.groupby("ticker")["daily_return"]
         .transform(lambda s: s.rolling(5, min_periods=3).std())
     )
+    df["volatility_10d"] = (
+        df.groupby("ticker")["daily_return"]
+        .transform(lambda s: s.rolling(10, min_periods=5).std())
+    )
     df["avg_return_5d"] = (
         df.groupby("ticker")["daily_return"]
         .transform(lambda s: s.rolling(5, min_periods=3).mean())
+    )
+    df["avg_return_10d"] = (
+        df.groupby("ticker")["daily_return"]
+        .transform(lambda s: s.rolling(10, min_periods=5).mean())
     )
 
     # Sentiment momentum: short vs long rolling

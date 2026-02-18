@@ -517,10 +517,22 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
     - ``macd_signal``: 9-day EMA of MACD
     - ``macd_histogram``: MACD - signal
     - ``bb_pct_b``: Bollinger Band %B (position within bands)
+    - ``bb_width``: Bollinger Band width (volatility squeeze)
     - ``atr_14``: 14-day Average True Range (volatility)
     - ``distance_52w_high``: % distance from 52-week high
     - ``distance_52w_low``: % distance from 52-week low
     - ``volume_zscore``: Volume z-score (20-day window)
+    - ``stoch_k``: Stochastic Oscillator %K (14-day)
+    - ``stoch_d``: Stochastic %D (3-day SMA of %K)
+    - ``williams_r``: Williams %R (14-day, -100 to 0)
+    - ``obv_slope``: On-Balance Volume 5-day slope (normalized)
+    - ``ema_cross``: 9/21 EMA cross signal (9EMA - 21EMA, normalized)
+    - ``adx_14``: Average Directional Index (trend strength, 0-100)
+    - ``cci_20``: Commodity Channel Index (20-day)
+    - ``mfi_14``: Money Flow Index (14-day, 0-100)
+    - ``roc_10``: Rate of Change (10-day, %)
+    - ``vwap_distance``: % distance from rolling 20-day VWAP
+    - ``keltner_pos``: Position within Keltner Channel (0-1)
     - ``return_5d``: Forward 5-day return direction (target)
     - ``return_20d``: Forward 20-day return direction (target)
 
@@ -563,7 +575,7 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
         prices.loc[mask, "macd_signal"] = macd_signal
         prices.loc[mask, "macd_histogram"] = macd_line - macd_signal
 
-        # --- Bollinger Bands %B ---
+        # --- Bollinger Bands %B + Band Width ---
         sma_20 = close.rolling(20, min_periods=20).mean()
         std_20 = close.rolling(20, min_periods=20).std()
         upper_band = sma_20 + 2 * std_20
@@ -571,6 +583,9 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
         band_width = upper_band - lower_band
         prices.loc[mask, "bb_pct_b"] = (
             (close - lower_band) / band_width.replace(0, np.nan)
+        )
+        prices.loc[mask, "bb_width"] = (
+            band_width / sma_20.replace(0, np.nan)
         )
 
         # --- ATR (14-day) ---
@@ -596,6 +611,95 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
         vol_std = volume.rolling(20, min_periods=5).std()
         prices.loc[mask, "volume_zscore"] = (
             (volume - vol_mean) / vol_std.replace(0, np.nan)
+        )
+
+        # --- Stochastic Oscillator %K / %D (14-day) ---
+        lowest_14 = low.rolling(14, min_periods=14).min()
+        highest_14 = high.rolling(14, min_periods=14).max()
+        stoch_range = highest_14 - lowest_14
+        prices.loc[mask, "stoch_k"] = (
+            (close - lowest_14) / stoch_range.replace(0, np.nan) * 100
+        )
+        prices.loc[mask, "stoch_d"] = (
+            prices.loc[mask, "stoch_k"].rolling(3, min_periods=3).mean()
+        )
+
+        # --- Williams %R (14-day) ---
+        prices.loc[mask, "williams_r"] = (
+            (highest_14 - close) / stoch_range.replace(0, np.nan) * -100
+        )
+
+        # --- OBV slope (On-Balance Volume, 5-day linear slope) ---
+        obv_sign = delta.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        obv = (obv_sign * volume).cumsum()
+        # Normalize OBV slope by volume mean to make it comparable across tickers
+        obv_slope = obv.rolling(5, min_periods=5).apply(
+            lambda x: np.polyfit(range(len(x)), x, 1)[0], raw=True
+        )
+        prices.loc[mask, "obv_slope"] = (
+            obv_slope / vol_mean.replace(0, np.nan)
+        )
+
+        # --- EMA cross signal (9 EMA - 21 EMA, normalized by close) ---
+        ema_9 = close.ewm(span=9, adjust=False).mean()
+        ema_21 = close.ewm(span=21, adjust=False).mean()
+        prices.loc[mask, "ema_cross"] = (
+            (ema_9 - ema_21) / close.replace(0, np.nan) * 100
+        )
+
+        # --- ADX (14-day Average Directional Index) ---
+        plus_dm = high.diff()
+        minus_dm = -low.diff()
+        plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
+        minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
+        atr_14 = tr.rolling(14, min_periods=14).mean()
+        plus_di = 100 * (plus_dm.rolling(14, min_periods=14).mean() /
+                         atr_14.replace(0, np.nan))
+        minus_di = 100 * (minus_dm.rolling(14, min_periods=14).mean() /
+                          atr_14.replace(0, np.nan))
+        di_sum = plus_di + minus_di
+        dx = 100 * ((plus_di - minus_di).abs() / di_sum.replace(0, np.nan))
+        prices.loc[mask, "adx_14"] = dx.rolling(14, min_periods=14).mean()
+
+        # --- CCI (Commodity Channel Index, 20-day) ---
+        typical_price = (high + low + close) / 3
+        tp_sma = typical_price.rolling(20, min_periods=20).mean()
+        tp_mad = typical_price.rolling(20, min_periods=20).apply(
+            lambda x: np.mean(np.abs(x - np.mean(x))), raw=True
+        )
+        prices.loc[mask, "cci_20"] = (
+            (typical_price - tp_sma) / (0.015 * tp_mad.replace(0, np.nan))
+        )
+
+        # --- MFI (Money Flow Index, 14-day) ---
+        typical_p = (high + low + close) / 3
+        money_flow = typical_p * volume
+        tp_diff = typical_p.diff()
+        pos_flow = money_flow.where(tp_diff > 0, 0).rolling(14, min_periods=14).sum()
+        neg_flow = money_flow.where(tp_diff < 0, 0).rolling(14, min_periods=14).sum()
+        mfr = pos_flow / neg_flow.replace(0, np.nan)
+        prices.loc[mask, "mfi_14"] = 100 - (100 / (1 + mfr))
+
+        # --- ROC (Rate of Change, 10-day, %) ---
+        prices.loc[mask, "roc_10"] = (
+            (close / close.shift(10) - 1) * 100
+        )
+
+        # --- VWAP distance (%, rolling 20-day) ---
+        vwap_num = (typical_price * volume).rolling(20, min_periods=5).sum()
+        vwap_den = volume.rolling(20, min_periods=5).sum()
+        vwap_20 = vwap_num / vwap_den.replace(0, np.nan)
+        prices.loc[mask, "vwap_distance"] = (
+            (close - vwap_20) / vwap_20.replace(0, np.nan) * 100
+        )
+
+        # --- Keltner Channel position ---
+        ema_20 = close.ewm(span=20, adjust=False).mean()
+        kelt_upper = ema_20 + 2 * atr_14
+        kelt_lower = ema_20 - 2 * atr_14
+        kelt_width = kelt_upper - kelt_lower
+        prices.loc[mask, "keltner_pos"] = (
+            (close - kelt_lower) / kelt_width.replace(0, np.nan)
         )
 
         # --- Multi-horizon forward return targets ---

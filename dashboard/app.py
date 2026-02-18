@@ -245,8 +245,8 @@ def get_news() -> pd.DataFrame:
 
 @st.cache_resource(show_spinner="Loading XGBoost model …")
 def load_xgb_model():
-    """Load the trained XGBoost return predictor."""
-    model_dir = _PROJECT_ROOT / "models" / "saved_models" / "xgboost_return"
+    """Load the trained XGBoost return predictor (multi-horizon 1d model)."""
+    model_dir = _PROJECT_ROOT / "models" / "saved_models" / "xgboost_return_1d"
     if not (model_dir / "model.json").exists():
         return None
     return ReturnPredictor.load(model_dir)
@@ -1051,12 +1051,35 @@ else:
 st.markdown("---")
 st.subheader("🚨 Alert Simulation — Rule-Based Signal Engine")
 st.caption(
-    "Configure sentiment thresholds below. The engine evaluates live headlines "
-    "against your rules and fires a BUY / SELL / HOLD signal.  "
-    "No black-box LLM — every rule is transparent and deterministic."
+    "**How it works:** Live news headlines are fetched from Google News RSS and scored by FinBERT "
+    "(sentiment model). The engine then aggregates those scores and checks them against the "
+    "thresholds you set below. If all rules pass → BUY/SELL signal; otherwise → HOLD.  \n"
+    "This is **not** an ML prediction — it is a transparent, deterministic rule engine. "
+    "No XGBoost or black-box model is involved; you control every threshold."
 )
 
-# ---- Threshold controls ----
+# ---- Pre-compute live data stats so sliders can show hints ----
+alert_df = score_live_headlines(selected_ticker)
+
+_has_alert_data = not (alert_df.empty or len(alert_df) == 0)
+if _has_alert_data:
+    _a_scores = alert_df["sentiment_score"].dropna()
+    _a_confs = alert_df["sentiment_conf"].dropna()
+    _a_avg = float(_a_scores.mean())
+    _a_avg_conf = float(_a_confs.mean()) * 100
+    _a_pct_pos = float((_a_scores > 0.1).mean()) * 100
+    _a_pct_neg = float((_a_scores < -0.1).mean()) * 100
+    _a_count = len(alert_df)
+    _a_dominant_pct = max(_a_pct_pos, _a_pct_neg)
+    _a_direction = "positive" if _a_pct_pos >= _a_pct_neg else "negative"
+    _hint_score = f"Live: {abs(_a_avg):.3f}"
+    _hint_conf = f"Live: {_a_avg_conf:.0f}%"
+    _hint_dom = f"Live: {_a_dominant_pct:.0f}%"
+    _hint_count = f"Live: {_a_count}"
+else:
+    _hint_score = _hint_conf = _hint_dom = _hint_count = "No data"
+
+# ---- Threshold controls with live data hints ----
 alert_c1, alert_c2, alert_c3, alert_c4 = st.columns(4)
 
 with alert_c1:
@@ -1064,25 +1087,33 @@ with alert_c1:
         "Min |avg score| for signal",
         min_value=0.01, max_value=0.50, value=0.10, step=0.01,
         help="How strong must the average sentiment be to trigger a BUY/SELL?",
+        key="alert_thresh_score",
     )
+    st.caption(f"📊 {_hint_score}")
 with alert_c2:
     thresh_conf = st.slider(
         "Min confidence %",
         min_value=10, max_value=90, value=35, step=5,
         help="Minimum avg per-headline confidence to trust the signal.",
+        key="alert_thresh_conf",
     )
+    st.caption(f"📊 {_hint_conf}")
 with alert_c3:
     thresh_dominance = st.slider(
         "Min dominant % (pos or neg)",
         min_value=20, max_value=90, value=45, step=5,
         help="What % of headlines must lean the same way?",
+        key="alert_thresh_dom",
     )
+    st.caption(f"📊 {_hint_dom}")
 with alert_c4:
     thresh_articles = st.slider(
         "Min article count",
         min_value=1, max_value=50, value=5, step=1,
         help="Require at least this many articles for a signal.",
+        key="alert_thresh_articles",
     )
+    st.caption(f"📊 {_hint_count}")
 
 st.markdown("")
 
@@ -1091,9 +1122,8 @@ strong_score = thresh_score * 2
 strong_dominance = min(thresh_dominance + 15, 95)
 
 # ---- Evaluate rules against live data for the selected ticker ----
-alert_df = score_live_headlines(selected_ticker)
 
-if alert_df.empty or len(alert_df) == 0:
+if not _has_alert_data:
     st.markdown(
         '<div class="alert-card alert-no-data">'
         '<div style="font-size:2.5rem;">NO DATA</div>'
@@ -1103,15 +1133,13 @@ if alert_df.empty or len(alert_df) == 0:
         unsafe_allow_html=True,
     )
 else:
-    a_scores = alert_df["sentiment_score"].dropna()
-    a_confs = alert_df["sentiment_conf"].dropna()
-    a_avg = float(a_scores.mean())
-    a_avg_conf = float(a_confs.mean()) * 100
-    a_pct_pos = float((a_scores > 0.1).mean()) * 100
-    a_pct_neg = float((a_scores < -0.1).mean()) * 100
-    a_count = len(alert_df)
-    a_dominant_pct = max(a_pct_pos, a_pct_neg)
-    a_direction = "positive" if a_pct_pos >= a_pct_neg else "negative"
+    a_avg = _a_avg
+    a_avg_conf = _a_avg_conf
+    a_pct_pos = _a_pct_pos
+    a_pct_neg = _a_pct_neg
+    a_count = _a_count
+    a_dominant_pct = _a_dominant_pct
+    a_direction = _a_direction
 
     # ---- Rule evaluation ----
     rules = [
@@ -1197,19 +1225,39 @@ else:
     # ---- Rule breakdown ----
     with detail_col:
         st.markdown("**Rule Breakdown**")
+
+        # Show a progress indicator for how many rules pass
+        st.progress(n_passed / 4, text=f"{n_passed}/4 base rules passed")
+
         all_rules = rules + strong_rules
         breakdown_html = '<div style="border:1px solid #e0e0e0; border-radius:0.5rem; overflow:hidden;">'
         for r in all_rules:
             icon = "✅" if r["passed"] else "❌"
             css_cls = "rule-pass" if r["passed"] else "rule-fail"
+            # Add "BLOCKING" badge for failed base rules
+            blocking = ""
+            if not r["passed"] and not r["name"].startswith("Strong"):
+                blocking = (
+                    ' <span style="background:#ff1744;color:white;'
+                    'font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:0.3rem;'
+                    'margin-left:0.4rem;vertical-align:middle;">BLOCKING</span>'
+                )
             breakdown_html += (
                 f'<div class="rule-row">'
-                f'<span>{icon} {r["name"]}</span>'
+                f'<span>{icon} {r["name"]}{blocking}</span>'
                 f'<span class="{css_cls}">{r["value"]}</span>'
                 f'</div>'
             )
         breakdown_html += '</div>'
         st.markdown(breakdown_html, unsafe_allow_html=True)
+
+        if not base_pass:
+            # Hint about which slider to adjust
+            failing = [r["name"].split("≥")[0].strip() for r in rules if not r["passed"]]
+            st.caption(
+                f"💡 Adjust thresholds for: {', '.join(failing)} — "
+                f"or wait for more headlines."
+            )
 
     st.markdown("")
 
@@ -1462,21 +1510,39 @@ else:
         )
         st.plotly_chart(fig_wf, key="xgb_wf_accuracy", width="stretch")
 
-        # Per-ticker metrics
+        # Per-ticker metrics — compact grid (5 per row)
         per_ticker = xgb_model.metrics.get("per_ticker", {})
         if per_ticker:
-            tk_cols = st.columns(len(per_ticker))
-            for i, (tkr, tm) in enumerate(per_ticker.items()):
-                with tk_cols[i]:
-                    st.markdown(
-                        f'<div class="metric-card">'
-                        f'<div class="metric-label">{tkr} Walk-Forward</div>'
-                        f'<div class="metric-value">{tm["accuracy"]:.1%}</div>'
-                        f'<div class="metric-delta delta-neutral">'
-                        f'F1={tm["f1"]:.1%} · n={tm["n_predictions"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+            tickers_sorted = sorted(
+                per_ticker.items(), key=lambda x: x[1]["accuracy"], reverse=True
+            )
+            COLS_PER_ROW = 5
+            for row_start in range(0, len(tickers_sorted), COLS_PER_ROW):
+                row_items = tickers_sorted[row_start : row_start + COLS_PER_ROW]
+                tk_cols = st.columns(COLS_PER_ROW)
+                for i, (tkr, tm) in enumerate(row_items):
+                    acc = tm["accuracy"]
+                    # colour-code: green ≥55%, red <50%, amber otherwise
+                    if acc >= 0.55:
+                        border_color = "#00c853"
+                    elif acc < 0.50:
+                        border_color = "#ff1744"
+                    else:
+                        border_color = "#ffc107"
+                    with tk_cols[i]:
+                        st.markdown(
+                            f'<div style="background:#f8f9fa; border-radius:0.5rem; '
+                            f'padding:0.5rem 0.6rem; text-align:center; '
+                            f'border-left:3px solid {border_color}; '
+                            f'margin-bottom:0.4rem;">'
+                            f'<div style="font-size:0.7rem; color:#666;">{tkr}</div>'
+                            f'<div style="font-size:1.1rem; font-weight:700;">'
+                            f'{acc:.1%}</div>'
+                            f'<div style="font-size:0.65rem; color:#888;">'
+                            f'F1={tm["f1"]:.1%} · n={tm["n_predictions"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
     st.markdown(
         "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
