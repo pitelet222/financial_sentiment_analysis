@@ -1,13 +1,16 @@
 # Financial Sentiment Analysis for Trading Signals
 
-A machine learning project that analyses financial news sentiment using **FinBERT** (fine-tuned) and predicts next-day stock return direction with **XGBoost**, presented through an interactive **Streamlit** dashboard.
+A machine learning project that analyses financial news sentiment using **FinBERT** (fine-tuned) and predicts stock return direction across **3 horizons** (daily / weekly / monthly) with **XGBoost**, presented through an interactive **Streamlit** dashboard covering **19 tickers** across 6 sectors.
 
 ## Features
 
 - **FinBERT Sentiment Analysis** — Fine-tuned ProsusAI/FinBERT model scores headlines as positive / negative / neutral with calibrated confidence
-- **XGBoost Return Predictor** — Predicts next-day return direction (UP / DOWN) using lagged sentiment + price features, validated with walk-forward cross-validation (no lookahead bias)
+- **Multi-Horizon XGBoost Predictor** — Predicts return direction (UP / DOWN) over 1-day, 5-day, and 20-day horizons using 29 lagged features (sentiment + price + technical), validated with walk-forward cross-validation (no lookahead bias)
+- **10 Technical Indicators** — RSI-14, MACD (line + signal + histogram), Bollinger %B, ATR-14, 52-week high/low distance, volume z-score
+- **VIX Market Fear Index** — CBOE VIX integrated as a cross-market risk feature
+- **19 Tickers, 6 Sectors** — Tech (AAPL, MSFT, GOOGL, AMZN, NVDA, META), Finance (JPM, GS, BAC), Healthcare (JNJ, UNH, PFE), Consumer (TSLA, WMT, KO), Energy (XOM, CVX), Industrial (CAT, BA)
 - **Live News Pipeline** — Aggregates headlines from 3 sources (Google News RSS, Yahoo Finance RSS, yfinance API) with disk caching
-- **Interactive Dashboard** — Streamlit app with 9 panels:
+- **Interactive Dashboard** — Streamlit app with 10 panels:
   1. Signal card + key metrics (bullish / bearish / neutral)
   2. Dual-axis price + sentiment chart (Plotly)
   3. Historical news feed with sentiment scores
@@ -16,42 +19,57 @@ A machine learning project that analyses financial news sentiment using **FinBER
   6. Live headlines scored by FinBERT in real time
   7. Multi-ticker comparison (up to 6 tickers side-by-side)
   8. Alert simulation panel (rule-based BUY / SELL / HOLD engine)
-  9. XGBoost prediction panel (next-day direction, feature importance, walk-forward accuracy timeline)
-- **Impact Ranking** — Headlines ranked by `|score| × confidence` with top-5 chart
-- **Multi-Ticker Comparison** — Compare sentiment across AAPL, MSFT, GOOGL, AMZN, TSLA, NVDA, META
-- **Rule-Based Alert Engine** — 4 configurable thresholds, 6 signal levels (STRONG BUY → STRONG SELL), transparent rule breakdown
+  9. XGBoost prediction panel (next-day direction, feature importance, walk-forward accuracy)
+  10. Multi-horizon panel (daily / weekly / monthly predictions, comparison chart, per-ticker heatmap)
+- **Impact Ranking** — Headlines ranked by `|score| x confidence` with top-5 chart
+- **Rule-Based Alert Engine** — 4 configurable thresholds, 6 signal levels (STRONG BUY to STRONG SELL)
+
+## Model Performance (Walk-Forward Validation)
+
+| Horizon | Accuracy | F1 | AUC | Precision | Recall |
+|---------|----------|------|------|-----------|--------|
+| Daily (1-day) | 52.9% | 62.8% | 51.7% | 54.7% | 73.6% |
+| Weekly (5-day) | 60.4% | 67.8% | 63.6% | 65.6% | 70.2% |
+| Monthly (20-day) | 71.4% | 81.0% | 71.0% | 74.1% | 89.4% |
+
+All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 251 trading days.
 
 ## Project Structure
 
 ```
 financial-sentiment-analysis/
 ├── dashboard/
-│   └── app.py              # Streamlit dashboard (main entry point)
+│   └── app.py                  # Streamlit dashboard (10 panels)
 ├── data/
-│   ├── cache/              # Disk-cached live news (auto-generated)
-│   ├── processed/          # Merged price + sentiment CSVs
-│   └── raw/                # Raw news & price CSVs (AAPL, MSFT)
+│   ├── cache/                  # Disk-cached live news (auto-generated)
+│   ├── processed/              # Merged price + sentiment CSVs
+│   └── raw/                    # Raw news & price CSVs (19 tickers + VIX)
 ├── models/
 │   └── saved_models/
 │       ├── finbert_finetuned/  # Fine-tuned FinBERT checkpoint
-│       └── xgboost_return/     # Trained XGBoost predictor
+│       ├── xgboost_return_1d/  # Daily return predictor
+│       ├── xgboost_return_5d/  # Weekly return predictor
+│       └── xgboost_return_20d/ # Monthly return predictor
 ├── notebooks/
-│   ├── evaluation/         # News/price exploration, baseline, FinBERT eval
-│   └── modeling/           # FinBERT fine-tuning notebook
+│   ├── evaluation/             # News/price exploration, baseline, FinBERT eval
+│   └── modeling/               # FinBERT fine-tuning notebook
+├── reports/
+│   └── metrics/                # Training reports & walk-forward metrics
 ├── scripts/
-│   ├── download_news.py    # Fetch historical news (Alpha Vantage)
-│   ├── download_news_extended.py  # Monthly-chunked 1yr news download
-│   ├── download_prices.py  # Fetch historical prices (yfinance)
-│   └── train_xgboost.py    # Train XGBoost return predictor
+│   ├── download_news.py        # Fetch historical news (Alpha Vantage)
+│   ├── download_prices.py      # Fetch historical prices (yfinance, 19 tickers)
+│   ├── train_xgboost.py        # Train single-horizon XGBoost predictor
+│   ├── train_multihorizon.py   # Train 1d/5d/20d models in one run
+│   └── tune_xgboost.py         # Optuna hyperparameter optimization
 ├── src/
 │   ├── data/
-│   │   ├── data_loader.py      # Load, merge & feature-engineer datasets
+│   │   ├── data_loader.py      # Load, merge, technical indicators, VIX
 │   │   ├── news_fetcher.py     # Live RSS + yfinance news pipeline
 │   │   └── preprocessor.py     # Text cleaning & normalisation
 │   ├── models/
-│   │   ├── sentiment_analyzer.py  # FinBERT wrapper (predict, fine-tune, save/load)
-│   │   └── return_predictor.py    # XGBoost return direction predictor
-│   └── predictor.py        # High-level get_sentiment() facade
+│   │   ├── sentiment_analyzer.py  # FinBERT wrapper
+│   │   └── return_predictor.py    # XGBoost multi-horizon predictor
+│   └── predictor.py            # High-level get_sentiment() facade
 ├── tests/
 ├── requirements.txt
 └── README.md
@@ -88,14 +106,28 @@ streamlit run dashboard/app.py
 
 Opens at [http://localhost:8501](http://localhost:8501). The FinBERT model loads automatically on first run (~10s).
 
-### Train the XGBoost Predictor
+### Train Multi-Horizon Models
 
 ```bash
-# Ensure the merged dataset exists first
+# Train all 3 horizons (1d, 5d, 20d)
+python scripts/train_multihorizon.py
+
+# Train specific horizons only
+python scripts/train_multihorizon.py --horizons 1d 5d
+
+# Single-horizon (legacy)
 python scripts/train_xgboost.py
 ```
 
-Trains with walk-forward validation (expanding window, no lookahead). Saves to `models/saved_models/xgboost_return/`.
+Trains with walk-forward validation (expanding window, no lookahead). Models saved to `models/saved_models/xgboost_return_{horizon}/`.
+
+### Hyperparameter Tuning
+
+```bash
+python scripts/tune_xgboost.py
+```
+
+Optuna-based search with full walk-forward CV per trial. Results saved to `reports/metrics/`.
 
 ### Model Setup
 
@@ -121,9 +153,11 @@ print(result["signal"], result["confidence"], result["avg_score"])
 
 | Dataset | Source | Tickers | Period |
 |---------|--------|---------|--------|
-| Historical news | Alpha Vantage API | AAPL, MSFT | Feb 2025 – Feb 2026 |
-| Historical prices | Yahoo Finance | AAPL, MSFT | Feb 2025 – Feb 2026 |
+| Historical news | Alpha Vantage API | AAPL, MSFT | Feb 2025 - Feb 2026 |
+| Historical prices | Yahoo Finance | 19 tickers + VIX | Feb 2025 - Feb 2026 |
 | Live headlines | Google News RSS, Yahoo Finance RSS, yfinance API | Any ticker | Real-time |
+
+**Coverage**: 4,769 price rows, 7,993 news articles, 251 trading days, 40 features per row.
 
 ## Models
 
@@ -134,23 +168,31 @@ print(result["signal"], result["confidence"], result["avg_score"])
 - **Parameters**: 109.5M
 - **Output**: `{ label, score, confidence, positive, negative, neutral }`
 
-### XGBoost (Return Prediction)
+### XGBoost (Multi-Horizon Return Prediction)
 
-- **Task**: Binary classification — next-day return direction (UP / DOWN)
-- **Features**: 15 features (9 sentiment + 4 price + 6 engineered), all lagged by 1 day
+- **Task**: Binary classification — return direction (UP / DOWN) over 1, 5, and 20 trading days
+- **Features**: 29 features (9 sentiment + 4 price + 10 technical + 6 engineered), all lagged by 1 day
+  - **Sentiment**: avg sentiment, std, range, pct positive/negative, article count, rolling 3d/5d
+  - **Price**: daily return, intraday range, gap%, volume change
+  - **Technical**: RSI-14, MACD (line/signal/histogram), Bollinger %B, ATR-14, 52w high/low distance, volume z-score, VIX
+  - **Engineered**: return lags (2d/3d), 5d volatility, 5d avg return, sentiment momentum, news coverage flag
 - **Validation**: Walk-forward (expanding window) — no lookahead bias
-- **Saved to**: `models/saved_models/xgboost_return/`
+- **Saved to**: `models/saved_models/xgboost_return_{1d,5d,20d}/`
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Sentiment model | PyTorch + Hugging Face Transformers || Return predictor | XGBoost + scikit-learn || Dashboard | Streamlit 1.54 + Plotly |
+| Sentiment model | PyTorch + Hugging Face Transformers |
+| Return predictor | XGBoost + scikit-learn |
+| Hyperparameter tuning | Optuna |
+| Dashboard | Streamlit 1.54 + Plotly |
 | Data pipeline | pandas, yfinance, feedparser |
+| Technical indicators | Custom (RSI, MACD, Bollinger, ATR) |
 | Live news | RSS feeds + yfinance API (zero API keys) |
 | Historical news | Alpha Vantage (API key required) |
 
 ## Disclaimer
 
-⚠️ This project is for **educational purposes only**. The trading signals are simulated and do not constitute financial advice. Always do your own research before making investment decisions.
+This project is for **educational purposes only**. The trading signals are simulated and do not constitute financial advice. Always do your own research before making investment decisions.
 

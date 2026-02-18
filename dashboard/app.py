@@ -251,6 +251,22 @@ def load_xgb_model():
         return None
     return ReturnPredictor.load(model_dir)
 
+
+@st.cache_resource(show_spinner="Loading multi-horizon models …")
+def load_multihorizon_models():
+    """Load XGBoost models for 1d, 5d, and 20d horizons.
+
+    Returns dict mapping horizon -> ReturnPredictor (or None if missing).
+    """
+    models = {}
+    for hz in ("1d", "5d", "20d"):
+        model_dir = _PROJECT_ROOT / "models" / "saved_models" / f"xgboost_return_{hz}"
+        if (model_dir / "model.json").exists():
+            models[hz] = ReturnPredictor.load(model_dir)
+        else:
+            models[hz] = None
+    return models
+
 merged_all = get_merged()
 news_all = get_news()
 
@@ -1464,9 +1480,199 @@ else:
 
     st.markdown(
         "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
-        "margin-top:1rem;'>🤖 XGBoost predicts next-day return direction "
+        "margin-top:1rem;'>XGBoost predicts next-day return direction "
         "using lagged sentiment + price features. Walk-forward validated "
         "(no lookahead bias). Not financial advice.</div>",
+        unsafe_allow_html=True,
+    )
+
+# =========================================================================
+# Panel 10 — Multi-Horizon Prediction (1d / 5d / 20d)
+# =========================================================================
+
+st.markdown("---")
+st.header("Multi-Horizon Prediction (Daily / Weekly / Monthly)")
+
+hz_models = load_multihorizon_models()
+hz_available = {k: v for k, v in hz_models.items() if v is not None}
+
+if not hz_available:
+    st.warning(
+        "No multi-horizon models found. "
+        "Run `python scripts/train_multihorizon.py` first."
+    )
+else:
+    # --- Predict for each horizon ---
+    HORIZON_META = {
+        "1d": {"label": "Daily (1-day)", "icon": "1D", "color_up": "#00c853", "color_dn": "#ff1744"},
+        "5d": {"label": "Weekly (5-day)", "icon": "5D", "color_up": "#00e676", "color_dn": "#ff5252"},
+        "20d": {"label": "Monthly (20-day)", "icon": "20D", "color_up": "#69f0ae", "color_dn": "#ff8a80"},
+    }
+
+    hz_preds = {}
+    for hz, mdl in hz_available.items():
+        try:
+            hz_preds[hz] = mdl.predict_next_day(merged_all, selected_ticker)
+        except Exception as e:
+            hz_preds[hz] = {"error": str(e)}
+
+    # --- Prediction cards side by side ---
+    cols = st.columns(len(hz_available))
+    for i, (hz, meta) in enumerate(
+        [(h, HORIZON_META[h]) for h in hz_available if h in hz_preds]
+    ):
+        pred = hz_preds[hz]
+        mdl = hz_available[hz]
+        with cols[i]:
+            if "error" in pred:
+                st.markdown(
+                    f'<div class="pred-card pred-neutral">'
+                    f'<div style="font-size:1.8rem;">{meta["icon"]}</div>'
+                    f'<div style="font-size:1rem;">{meta["label"]}</div>'
+                    f'<div style="font-size:0.8rem; margin-top:0.5rem;">Error: {pred["error"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                direction = pred["direction"]
+                prob_up = pred["prob_up"]
+                prob_down = pred["prob_down"]
+                confidence = pred["confidence"]
+                card_cls = "pred-up" if direction == "UP" else "pred-down"
+                arrow = "^" if direction == "UP" else "v"
+                prob_shown = prob_up if direction == "UP" else prob_down
+
+                st.markdown(
+                    f'<div class="pred-card {card_cls}">'
+                    f'<div style="font-size:1.6rem;">{meta["icon"]} {arrow}</div>'
+                    f'<div style="font-size:1.4rem;">PREDICT {direction}</div>'
+                    f'<div style="font-size:0.9rem; opacity:0.9; margin-top:0.3rem;">'
+                    f'P(Up): {prob_up:.1%} · P(Down): {prob_down:.1%}</div>'
+                    f'<div style="font-size:0.8rem; opacity:0.75; margin-top:0.2rem;">'
+                    f'Confidence: {confidence:.1%}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Model performance
+                acc = mdl.metrics.get("accuracy", 0)
+                auc = mdl.metrics.get("roc_auc", 0)
+                f1 = mdl.metrics.get("f1", 0)
+                st.markdown(
+                    f'<div class="metric-card" style="margin-top:0.5rem;">'
+                    f'<div class="metric-label">{meta["label"]} Accuracy</div>'
+                    f'<div class="metric-value">{acc:.1%}</div>'
+                    f'<div class="metric-delta delta-neutral">'
+                    f'AUC {auc:.3f} | F1 {f1:.1%}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # --- Multi-horizon probability comparison chart ---
+    valid_preds = {h: p for h, p in hz_preds.items() if "error" not in p}
+    if valid_preds:
+        fig_mh = go.Figure()
+
+        hz_labels = [HORIZON_META[h]["label"] for h in valid_preds]
+        prob_ups = [valid_preds[h]["prob_up"] * 100 for h in valid_preds]
+        prob_downs = [valid_preds[h]["prob_down"] * 100 for h in valid_preds]
+
+        fig_mh.add_trace(go.Bar(
+            x=hz_labels,
+            y=prob_ups,
+            name="P(Up)",
+            marker_color="#00c853",
+            text=[f"{p:.1f}%" for p in prob_ups],
+            textposition="inside",
+        ))
+        fig_mh.add_trace(go.Bar(
+            x=hz_labels,
+            y=prob_downs,
+            name="P(Down)",
+            marker_color="#ff1744",
+            text=[f"{p:.1f}%" for p in prob_downs],
+            textposition="inside",
+        ))
+
+        fig_mh.update_layout(
+            title=f"Multi-Horizon Outlook: {selected_ticker}",
+            barmode="group",
+            yaxis_title="Probability (%)",
+            yaxis=dict(range=[0, 100]),
+            height=320,
+            margin=dict(l=10, r=10, t=40, b=30),
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        )
+        fig_mh.add_hline(y=50, line_dash="dash", line_color="#ffc107", annotation_text="50%")
+        st.plotly_chart(fig_mh, key="multihorizon_bar", width="stretch")
+
+    # --- Model comparison table ---
+    if hz_available:
+        comparison_data = []
+        for hz, mdl in hz_available.items():
+            m = mdl.metrics
+            comparison_data.append({
+                "Horizon": HORIZON_META[hz]["label"],
+                "Accuracy": f"{m.get('accuracy', 0):.1%}",
+                "F1": f"{m.get('f1', 0):.1%}",
+                "AUC": f"{m.get('roc_auc', 0):.3f}",
+                "Precision": f"{m.get('precision', 0):.1%}",
+                "Recall": f"{m.get('recall', 0):.1%}",
+                "Predictions": m.get("n_predictions", 0),
+            })
+        st.markdown("**Model Comparison (Walk-Forward Validation)**")
+        st.dataframe(pd.DataFrame(comparison_data), hide_index=True, width=900)
+
+    # --- Per-ticker accuracy heatmap ---
+    if len(hz_available) >= 2:
+        ticker_accs = {}
+        for hz, mdl in hz_available.items():
+            per_tkr = mdl.metrics.get("per_ticker", {})
+            for tkr, tm in per_tkr.items():
+                if tkr not in ticker_accs:
+                    ticker_accs[tkr] = {}
+                ticker_accs[tkr][HORIZON_META[hz]["label"]] = tm.get("accuracy", 0)
+
+        if ticker_accs:
+            hm_df = pd.DataFrame(ticker_accs).T
+            hm_df = hm_df.sort_index()
+
+            fig_hm = go.Figure(data=go.Heatmap(
+                z=hm_df.values * 100,
+                x=hm_df.columns.tolist(),
+                y=hm_df.index.tolist(),
+                colorscale=[
+                    [0, "#ff1744"],
+                    [0.5, "#ffc107"],
+                    [1, "#00c853"],
+                ],
+                zmin=35,
+                zmax=65,
+                text=[[f"{v*100:.1f}%" for v in row] for row in hm_df.values],
+                texttemplate="%{text}",
+                textfont={"size": 11},
+                colorbar=dict(title="Accuracy %"),
+            ))
+            fig_hm.update_layout(
+                title="Per-Ticker Accuracy by Horizon",
+                xaxis_title="Horizon",
+                yaxis_title="Ticker",
+                height=max(300, len(ticker_accs) * 30 + 100),
+                margin=dict(l=10, r=10, t=40, b=30),
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_hm, key="multihorizon_heatmap", width="stretch")
+
+    st.markdown(
+        "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
+        "margin-top:1rem;'>Multi-horizon models predict return direction over "
+        "1, 5, and 20 trading days. Each model uses walk-forward validation "
+        "with lagged technical + sentiment features. Not financial advice.</div>",
         unsafe_allow_html=True,
     )
 
@@ -1478,7 +1684,7 @@ st.markdown("---")
 st.markdown(
     "<div style='text-align:center; opacity:0.5; font-size:0.85rem;'>"
     "Financial Sentiment Analysis Dashboard · Built with Streamlit + Plotly · "
-    "Model: ProsusAI/FinBERT (fine-tuned) + XGBoost"
+    "Model: ProsusAI/FinBERT (fine-tuned) + XGBoost (multi-horizon)"
     "</div>",
     unsafe_allow_html=True,
 )

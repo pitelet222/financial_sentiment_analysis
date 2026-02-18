@@ -69,6 +69,20 @@ PRICE_FEATURES = [
     "volume_change",
 ]
 
+# Technical analysis indicators (computed by data_loader.add_technical_indicators)
+TECHNICAL_FEATURES = [
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "macd_histogram",
+    "bb_pct_b",
+    "atr_14",
+    "distance_52w_high",
+    "distance_52w_low",
+    "volume_zscore",
+    "VIX_close",
+]
+
 # Additional engineered features (computed in prepare_features)
 ENGINEERED_FEATURES = [
     "return_lag2",
@@ -79,7 +93,14 @@ ENGINEERED_FEATURES = [
     "news_has_coverage",   # binary: any articles?
 ]
 
-TARGET = "return_direction"  # 1 = up, 0 = down
+# Supported targets
+TARGETS = {
+    "1d": "return_direction",   # 1 = up, 0 = down (next day)
+    "5d": "return_5d",          # 1 = up, 0 = down (next 5 days)
+    "20d": "return_20d",        # 1 = up, 0 = down (next 20 days)
+}
+
+TARGET = "return_direction"  # default (1d)
 
 # Minimum training window for walk-forward validation
 MIN_TRAIN_DAYS = 60
@@ -116,7 +137,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].fillna(0)
 
     # --- Lag all raw features by 1 day (use yesterday's data) ---
-    lag_cols = SENTIMENT_FEATURES + PRICE_FEATURES
+    lag_cols = SENTIMENT_FEATURES + PRICE_FEATURES + TECHNICAL_FEATURES
     for col in lag_cols:
         if col in df.columns:
             df[col] = df.groupby("ticker")[col].shift(1)
@@ -149,7 +170,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_feature_columns() -> List[str]:
     """Return the ordered list of feature column names."""
-    return SENTIMENT_FEATURES + PRICE_FEATURES + ENGINEERED_FEATURES
+    return SENTIMENT_FEATURES + PRICE_FEATURES + TECHNICAL_FEATURES + ENGINEERED_FEATURES
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +232,9 @@ def walk_forward_split(
 # ---------------------------------------------------------------------------
 
 class ReturnPredictor:
-    """XGBoost-based next-day return direction predictor.
+    """XGBoost-based return direction predictor with configurable horizon.
+
+    Supports daily (1d), weekly (5d), and monthly (20d) prediction horizons.
 
     Attributes
     ----------
@@ -219,6 +242,10 @@ class ReturnPredictor:
         Trained XGBoost model.
     feature_cols : list[str]
         Ordered feature column names.
+    target_col : str
+        Target column name (depends on horizon).
+    horizon : str
+        Prediction horizon: '1d', '5d', or '20d'.
     metrics : dict
         Walk-forward validation metrics.
     feature_importance : dict
@@ -239,6 +266,7 @@ class ReturnPredictor:
         reg_lambda: float = 1.0,
         scale_pos_weight: float = 1.0,
         random_state: int = 42,
+        horizon: str = "1d",
     ):
         self.model_params = {
             "n_estimators": n_estimators,
@@ -255,6 +283,13 @@ class ReturnPredictor:
             "random_state": random_state,
             "eval_metric": "logloss",
         }
+        # Horizon & target
+        self.horizon = horizon
+        if horizon not in TARGETS:
+            raise ValueError(
+                f"Unknown horizon '{horizon}'. Valid: {list(TARGETS.keys())}"
+            )
+        self.target_col = TARGETS[horizon]
         self.model: Optional[XGBClassifier] = None
         self.feature_cols = get_feature_columns()
         self.metrics: Dict = {}
@@ -289,13 +324,14 @@ class ReturnPredictor:
         """
         # --- Load & prepare ---
         if verbose:
-            print("[1/4] Loading and preparing features ...")
+            print(f"[1/4] Loading and preparing features (horizon={self.horizon}) ...")
         df = pd.read_csv(data_path, parse_dates=["date"])
         df = prepare_features(df)
 
         # Drop rows with NaN target or features
-        df = df.dropna(subset=[TARGET])
-        feature_df = df[self.feature_cols + [TARGET, "date", "ticker"]].copy()
+        target = self.target_col
+        df = df.dropna(subset=[target])
+        feature_df = df[self.feature_cols + [target, "date", "ticker"]].copy()
         feature_df = feature_df.dropna(subset=self.feature_cols)
 
         if verbose:
@@ -316,9 +352,9 @@ class ReturnPredictor:
 
         for i, (train_idx, test_idx) in enumerate(splits):
             X_train = feature_df.loc[train_idx, self.feature_cols]
-            y_train = feature_df.loc[train_idx, TARGET]
+            y_train = feature_df.loc[train_idx, target]
             X_test = feature_df.loc[test_idx, self.feature_cols]
-            y_test = feature_df.loc[test_idx, TARGET]
+            y_test = feature_df.loc[test_idx, target]
 
             model = XGBClassifier(**self.model_params)
             with warnings.catch_warnings():
@@ -345,6 +381,8 @@ class ReturnPredictor:
         all_probs = np.array(all_probs)
 
         self.metrics = {
+            "horizon": self.horizon,
+            "target": target,
             "accuracy": float(accuracy_score(all_true, all_preds)),
             "precision": float(precision_score(all_true, all_preds, zero_division=0)),
             "recall": float(recall_score(all_true, all_preds, zero_division=0)),
@@ -399,7 +437,7 @@ class ReturnPredictor:
             print("\n[3/4] Training final model on all data ...")
 
         X_all = feature_df[self.feature_cols]
-        y_all = feature_df[TARGET]
+        y_all = feature_df[target]
 
         self.model = XGBClassifier(**self.model_params)
         with warnings.catch_warnings():
@@ -529,6 +567,8 @@ class ReturnPredictor:
 
         # Metadata
         meta = {
+            "horizon": self.horizon,
+            "target_col": self.target_col,
             "feature_cols": self.feature_cols,
             "model_params": self.model_params,
             "metrics": self.metrics,
@@ -559,8 +599,12 @@ class ReturnPredictor:
         init_params = set(inspect.signature(cls.__init__).parameters.keys()) - {"self"}
         saved_params = meta.get("model_params", {})
         valid_params = {k: v for k, v in saved_params.items() if k in init_params}
+        # Add horizon if saved
+        horizon = meta.get("horizon", "1d")
+        valid_params["horizon"] = horizon
         predictor = cls(**valid_params)
         predictor.feature_cols = meta.get("feature_cols", get_feature_columns())
+        predictor.target_col = meta.get("target_col", TARGETS.get(horizon, TARGET))
         predictor.metrics = meta.get("metrics", {})
         predictor.feature_importance = meta.get("feature_importance", {})
 
@@ -586,10 +630,14 @@ class ReturnPredictor:
         if not self.metrics:
             return "No metrics available. Train the model first."
 
+        horizon_label = {"1d": "Daily (1-day)", "5d": "Weekly (5-day)", "20d": "Monthly (20-day)"}
+        hlabel = horizon_label.get(self.horizon, self.horizon)
+
         lines = [
             "=" * 55,
-            "  XGBoost Return Direction Predictor — Summary",
+            f"  XGBoost Return Predictor -- {hlabel}",
             "=" * 55,
+            f"  Horizon: {hlabel}   Target: {self.target_col}",
             f"  Walk-Forward Predictions: {self.metrics.get('n_predictions', '?')}",
             f"  Accuracy  : {self.metrics.get('accuracy', 0):.1%}",
             f"  F1 Score  : {self.metrics.get('f1', 0):.1%}",

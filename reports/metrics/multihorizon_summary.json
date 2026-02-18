@@ -1,0 +1,159 @@
+{
+  "horizons_trained": [
+    "1d",
+    "5d",
+    "20d"
+  ],
+  "total_elapsed_minutes": 2.6,
+  "data_path": "C:\\Users\\yagoc\\OneDrive\\Escritorio\\Pite\\pite_py_projects\\financial-sentiment-analysis\\data\\processed\\merged_2025-02-13_to_2026-02-13.csv",
+  "min_train_days": 60,
+  "results": {
+    "1d": {
+      "label": "Daily (next day)",
+      "elapsed_seconds": 67.2,
+      "accuracy": 0.5290858725761773,
+      "f1": 0.6277372262773723,
+      "roc_auc": 0.5172969332938797,
+      "precision": 0.5473058973271108,
+      "recall": 0.7358813462635482,
+      "n_predictions": 3249,
+      "top_5_features": {
+        "JNJ": {
+          "accuracy": 0.6198830409356725,
+          "f1": 0.721030042918455,
+          "n_predictions": 171
+        },
+        "AAPL": {
+          "accuracy": 0.5906432748538012,
+          "f1": 0.6666666666666666,
+          "n_predictions": 171
+        },
+        "XOM": {
+          "accuracy": 0.5906432748538012,
+          "f1": 0.6982758620689655,
+          "n_predictions": 171
+        },
+        "BA": {
+          "accuracy": 0.5672514619883041,
+          "f1": 0.6636363636363637,
+          "n_predictions": 171
+        },
+        "META": {
+          "accuracy": 0.5672514619883041,
+          "f1": 0.6224489795918368,
+          "n_predictions": 171
+        }
+      },
+      "hyperparameters": {
+        "n_estimators": 473,
+        "max_depth": 5,
+        "learning_rate": 0.213,
+        "subsample": 0.617,
+        "colsample_bytree": 0.863,
+        "gamma": 3.398,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "scale_pos_weight": 1.924,
+        "min_child_weight": 1
+      }
+    },
+    "5d": {
+      "label": "Weekly (5-day)",
+      "elapsed_seconds": 58.7,
+      "accuracy": 0.6043119847812302,
+      "f1": 0.6780185758513931,
+      "roc_auc": 0.6362708825401271,
+      "precision": 0.6560159760359461,
+      "recall": 0.7015483182060865,
+      "n_predictions": 3154,
+      "top_5_features": {
+        "XOM": {
+          "accuracy": 0.6807228915662651,
+          "f1": 0.7336683417085427,
+          "n_predictions": 166
+        },
+        "NVDA": {
+          "accuracy": 0.6506024096385542,
+          "f1": 0.7238095238095238,
+          "n_predictions": 166
+        },
+        "CVX": {
+          "accuracy": 0.6445783132530121,
+          "f1": 0.7377777777777778,
+          "n_predictions": 166
+        },
+        "UNH": {
+          "accuracy": 0.6445783132530121,
+          "f1": 0.6628571428571428,
+          "n_predictions": 166
+        },
+        "AAPL": {
+          "accuracy": 0.6385542168674698,
+          "f1": 0.6875,
+          "n_predictions": 166
+        }
+      },
+      "hyperparameters": {
+        "n_estimators": 300,
+        "max_depth": 4,
+        "learning_rate": 0.1,
+        "subsample": 0.7,
+        "colsample_bytree": 0.8,
+        "gamma": 1.0,
+        "reg_alpha": 0.5,
+        "reg_lambda": 2.0,
+        "scale_pos_weight": 1.0,
+        "min_child_weight": 3
+      }
+    },
+    "20d": {
+      "label": "Monthly (20-day)",
+      "elapsed_seconds": 27.4,
+      "accuracy": 0.7141861275705821,
+      "f1": 0.8104484512251503,
+      "roc_auc": 0.7095586089221166,
+      "precision": 0.7409129332206256,
+      "recall": 0.8943877551020408,
+      "n_predictions": 2869,
+      "top_5_features": {
+        "AAPL": {
+          "accuracy": 0.8609271523178808,
+          "f1": 0.9149797570850202,
+          "n_predictions": 151
+        },
+        "GOOGL": {
+          "accuracy": 0.8543046357615894,
+          "f1": 0.9191176470588235,
+          "n_predictions": 151
+        },
+        "JNJ": {
+          "accuracy": 0.8543046357615894,
+          "f1": 0.9214285714285714,
+          "n_predictions": 151
+        },
+        "CAT": {
+          "accuracy": 0.847682119205298,
+          "f1": 0.9175627240143369,
+          "n_predictions": 151
+        },
+        "CVX": {
+          "accuracy": 0.7682119205298014,
+          "f1": 0.8430493273542601,
+          "n_predictions": 151
+        }
+      },
+      "hyperparameters": {
+        "n_estimators": 200,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 0.7,
+        "colsample_bytree": 0.8,
+        "gamma": 2.0,
+        "reg_alpha": 1.0,
+        "reg_lambda": 3.0,
+        "scale_pos_weight": 1.0,
+        "min_child_weight": 5
+      }
+    }
+  }
+}

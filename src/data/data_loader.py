@@ -50,7 +50,14 @@ RAW_DATA_DIR = _PROJECT_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = _PROJECT_ROOT / "data" / "processed"
 
 # Default tickers – keep in sync with download scripts
-DEFAULT_TICKERS: List[str] = ["AAPL", "MSFT"]
+DEFAULT_TICKERS: List[str] = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META",
+    "JPM", "GS", "BAC",
+    "JNJ", "UNH", "PFE",
+    "TSLA", "WMT", "KO",
+    "XOM", "CVX",
+    "CAT", "BA",
+]
 
 # Default date range
 DEFAULT_START = "2025-02-13"
@@ -148,9 +155,11 @@ def load_all_news(
         frames.append(load_news_csv(fp))
 
     if not frames:
-        raise FileNotFoundError(
-            f"No news CSVs found in {data_dir} for tickers {tickers}"
+        warnings.warn(
+            f"No news CSVs found in {data_dir} for tickers {tickers}. "
+            "Returning empty DataFrame."
         )
+        return pd.DataFrame()
 
     df = pd.concat(frames, ignore_index=True)
     df = df.sort_values("published_at", ascending=False).reset_index(drop=True)
@@ -499,6 +508,144 @@ def add_price_features(prices: pd.DataFrame) -> pd.DataFrame:
     return prices
 
 
+def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
+    """Add technical analysis indicators computed from OHLCV data.
+
+    Added columns:
+    - ``rsi_14``: 14-day Relative Strength Index (0-100)
+    - ``macd``: MACD line (12-day EMA - 26-day EMA)
+    - ``macd_signal``: 9-day EMA of MACD
+    - ``macd_histogram``: MACD - signal
+    - ``bb_pct_b``: Bollinger Band %B (position within bands)
+    - ``atr_14``: 14-day Average True Range (volatility)
+    - ``distance_52w_high``: % distance from 52-week high
+    - ``distance_52w_low``: % distance from 52-week low
+    - ``volume_zscore``: Volume z-score (20-day window)
+    - ``return_5d``: Forward 5-day return direction (target)
+    - ``return_20d``: Forward 20-day return direction (target)
+
+    Parameters
+    ----------
+    prices : pd.DataFrame
+        Must contain ``ticker``, ``Close``, ``High``, ``Low``,
+        ``Volume`` columns. Should already have ``date`` column.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same DataFrame with technical indicator columns appended.
+    """
+    prices = prices.copy()
+    prices = prices.sort_values(["ticker", "date"]).reset_index(drop=True)
+
+    for ticker in prices["ticker"].unique():
+        mask = prices["ticker"] == ticker
+        close = prices.loc[mask, "Close"]
+        high = prices.loc[mask, "High"]
+        low = prices.loc[mask, "Low"]
+        volume = prices.loc[mask, "Volume"]
+
+        # --- RSI (14-day) ---
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        avg_gain = gain.rolling(14, min_periods=14).mean()
+        avg_loss = loss.rolling(14, min_periods=14).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        prices.loc[mask, "rsi_14"] = 100 - (100 / (1 + rs))
+
+        # --- MACD ---
+        ema_12 = close.ewm(span=12, adjust=False).mean()
+        ema_26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema_12 - ema_26
+        macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+        prices.loc[mask, "macd"] = macd_line
+        prices.loc[mask, "macd_signal"] = macd_signal
+        prices.loc[mask, "macd_histogram"] = macd_line - macd_signal
+
+        # --- Bollinger Bands %B ---
+        sma_20 = close.rolling(20, min_periods=20).mean()
+        std_20 = close.rolling(20, min_periods=20).std()
+        upper_band = sma_20 + 2 * std_20
+        lower_band = sma_20 - 2 * std_20
+        band_width = upper_band - lower_band
+        prices.loc[mask, "bb_pct_b"] = (
+            (close - lower_band) / band_width.replace(0, np.nan)
+        )
+
+        # --- ATR (14-day) ---
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+        prices.loc[mask, "atr_14"] = tr.rolling(14, min_periods=14).mean()
+
+        # --- 52-week high/low distance ---
+        high_52w = high.rolling(252, min_periods=20).max()
+        low_52w = low.rolling(252, min_periods=20).min()
+        prices.loc[mask, "distance_52w_high"] = (
+            (close - high_52w) / high_52w * 100
+        )
+        prices.loc[mask, "distance_52w_low"] = (
+            (close - low_52w) / low_52w * 100
+        )
+
+        # --- Volume z-score (20-day) ---
+        vol_mean = volume.rolling(20, min_periods=5).mean()
+        vol_std = volume.rolling(20, min_periods=5).std()
+        prices.loc[mask, "volume_zscore"] = (
+            (volume - vol_mean) / vol_std.replace(0, np.nan)
+        )
+
+        # --- Multi-horizon forward return targets ---
+        # 5-day forward return direction
+        fwd_5d = close.shift(-5) / close - 1
+        prices.loc[mask, "return_5d"] = (fwd_5d >= 0).astype(float)
+        prices.loc[mask, "return_5d"] = prices.loc[mask, "return_5d"].where(
+            fwd_5d.notna()
+        )
+
+        # 20-day forward return direction
+        fwd_20d = close.shift(-20) / close - 1
+        prices.loc[mask, "return_20d"] = (fwd_20d >= 0).astype(float)
+        prices.loc[mask, "return_20d"] = prices.loc[mask, "return_20d"].where(
+            fwd_20d.notna()
+        )
+
+    return prices
+
+
+def load_vix(
+    data_dir: Path = RAW_DATA_DIR,
+    start_date: str = DEFAULT_START,
+    end_date: str = DEFAULT_END,
+) -> pd.DataFrame:
+    """Load VIX data and prepare for merging.
+
+    Parameters
+    ----------
+    data_dir : Path
+        Directory containing the VIX CSV.
+    start_date, end_date : str
+        Date range used in the filename.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with ``date`` and ``VIX_close`` columns.
+    """
+    fp = data_dir / f"vix_{start_date}_to_{end_date}.csv"
+    if not fp.exists():
+        warnings.warn(f"VIX file not found: {fp}. VIX features will be NaN.")
+        return pd.DataFrame(columns=["date", "VIX_close"])
+    df = pd.read_csv(fp)
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["date"] = df["Date"].dt.floor("D")
+    df = df[["date", "VIX_close"]].dropna()
+    return df
+
+
 # =========================================================================
 # 6. MERGE & ENRICH
 # =========================================================================
@@ -648,42 +795,68 @@ def load_merged_dataset(
         tickers = DEFAULT_TICKERS
 
     # --- Step 1: Load raw data ---
-    print("[1/7] Loading news CSVs ...")
+    print("[1/9] Loading news CSVs ...")
     news = load_all_news(tickers, data_dir, start_date, end_date)
     print(f"       -> {len(news)} articles loaded.")
 
-    print("[2/7] Loading price CSVs ...")
+    print("[2/9] Loading price CSVs ...")
     prices = load_all_prices(tickers, data_dir, start_date, end_date)
     print(f"       -> {len(prices)} price rows loaded.")
 
-    # --- Step 2: Session classification ---
-    print("[3/7] Classifying market sessions ...")
-    news = add_session_column(news)
-    session_counts = news["session"].value_counts().to_dict()
-    print(f"       -> Sessions: {session_counts}")
+    # --- Step 2-4: News processing (skip if no news) ---
+    if not news.empty:
+        print("[3/9] Classifying market sessions ...")
+        news = add_session_column(news)
+        session_counts = news["session"].value_counts().to_dict()
+        print(f"       -> Sessions: {session_counts}")
 
-    # --- Step 3: Assign trading days ---
-    print("[4/7] Assigning articles to trading days ...")
-    trading_dates = prices["date"].drop_duplicates()
-    news = assign_trading_day(news, trading_dates)
-    print(f"       -> {len(news)} articles matched to trading days.")
+        print("[4/9] Assigning articles to trading days ...")
+        trading_dates = prices["date"].drop_duplicates()
+        news = assign_trading_day(news, trading_dates)
+        print(f"       -> {len(news)} articles matched to trading days.")
 
-    # --- Step 4: Aggregate sentiment ---
-    print("[5/7] Aggregating daily sentiment ...")
-    if session_filter:
-        print(f"       (filtering to sessions: {session_filter})")
-        sentiment = aggregate_by_session(news, sessions=session_filter)
+        print("[5/9] Aggregating daily sentiment ...")
+        if session_filter:
+            print(f"       (filtering to sessions: {session_filter})")
+            sentiment = aggregate_by_session(news, sessions=session_filter)
+        else:
+            sentiment = aggregate_sentiment(news)
+        print(f"       -> {len(sentiment)} daily-sentiment rows.")
     else:
-        sentiment = aggregate_sentiment(news)
-    print(f"       -> {len(sentiment)} daily-sentiment rows.")
+        print("[3-5/9] No news articles available, skipping sentiment processing.")
+        sentiment = pd.DataFrame()
 
     # --- Step 5: Price features ---
-    print("[6/7] Computing price features ...")
+    print("[6/9] Computing price features ...")
     prices = add_price_features(prices)
 
-    # --- Step 6 & 7: Merge + rolling ---
-    print("[7/7] Merging & adding rolling sentiment ...")
-    merged = merge_sentiment_with_prices(sentiment, prices)
+    # --- Step 6: Technical indicators ---
+    print("[7/9] Computing technical indicators (RSI, MACD, Bollinger, ATR, etc.) ...")
+    prices = add_technical_indicators(prices)
+
+    # --- Step 7: VIX data ---
+    print("[8/9] Loading VIX (market-fear index) ...")
+    vix = load_vix(data_dir, start_date, end_date)
+    if not vix.empty:
+        prices = pd.merge(prices, vix, on="date", how="left")
+        print(f"       -> {vix['VIX_close'].notna().sum()} VIX rows merged.")
+    else:
+        prices["VIX_close"] = np.nan
+        print("       -> VIX data not available, skipping.")
+
+    # --- Step 8 & 9: Merge + rolling ---
+    print("[9/9] Merging & adding rolling sentiment ...")
+    if not sentiment.empty:
+        merged = merge_sentiment_with_prices(sentiment, prices)
+    else:
+        merged = prices.copy()
+        # Add empty sentiment columns
+        for col in ["article_count", "avg_overall_sentiment",
+                     "avg_ticker_sentiment", "min_sentiment", "max_sentiment",
+                     "sentiment_std", "sentiment_range", "pct_positive",
+                     "pct_negative", "n_pre_market", "n_market_hours",
+                     "n_after_hours", "n_overnight"]:
+            merged[col] = 0 if "count" in col or col.startswith("n_") else np.nan
     merged = add_rolling_sentiment(merged, windows=rolling_windows)
 
     # Sort final output

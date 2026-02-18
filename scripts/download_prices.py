@@ -31,8 +31,21 @@ from datetime import datetime
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Default tickers to download — add or remove as needed
-DEFAULT_TICKERS = ["AAPL", "MSFT"]
+# Default tickers to download — diversified across sectors
+# Tech: AAPL, MSFT, GOOGL, AMZN, NVDA, META
+# Finance: JPM, GS, BAC
+# Healthcare: JNJ, UNH, PFE
+# Consumer: TSLA, WMT, KO
+# Energy: XOM, CVX
+# Industrials: CAT, BA
+DEFAULT_TICKERS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META",
+    "JPM", "GS", "BAC",
+    "JNJ", "UNH", "PFE",
+    "TSLA", "WMT", "KO",
+    "XOM", "CVX",
+    "CAT", "BA",
+]
 
 # Default date range — format: "YYYY-MM-DD"
 DEFAULT_START_DATE = "2025-02-13"
@@ -150,7 +163,7 @@ def main():
     print("  Financial Sentiment Analysis — Price Data Downloader")
     print("=" * 60)
     print(f"  Tickers : {DEFAULT_TICKERS}")
-    print(f"  Period  : {DEFAULT_START_DATE} → {DEFAULT_END_DATE}")
+    print(f"  Period  : {DEFAULT_START_DATE} to {DEFAULT_END_DATE}")
     print(f"  Output  : {RAW_DATA_DIR}")
     print("=" * 60)
 
