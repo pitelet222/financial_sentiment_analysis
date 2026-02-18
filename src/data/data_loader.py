@@ -827,10 +827,16 @@ def add_rolling_sentiment(
     df = df.copy()
     df = df.sort_values(["ticker", "date"]).reset_index(drop=True)
 
+    # Fill NaN sentiment with 0 (no news = neutral) before rolling,
+    # so that days without articles don't create NaN gaps.
+    sent_filled = df.groupby("ticker")["avg_overall_sentiment"].transform(
+        lambda s: s.fillna(0)
+    )
+
     for w in windows:
         col_name = f"sentiment_rolling_{w}d"
         df[col_name] = (
-            df.groupby("ticker")["avg_overall_sentiment"]
+            sent_filled.groupby(df["ticker"])
             .transform(lambda s: s.rolling(w, min_periods=1).mean())
         )
 

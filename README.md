@@ -1,12 +1,23 @@
 # Financial Sentiment Analysis for Trading Signals
 
-A machine learning project that analyses financial news sentiment using **FinBERT** (fine-tuned) and predicts stock return direction across **3 horizons** (daily / weekly / monthly) with **XGBoost**, presented through an interactive **Streamlit** dashboard covering **19 tickers** across 6 sectors.
+> **FinBERT + XGBoost** pipeline that scores financial news sentiment and predicts stock return direction across **3 horizons** (daily / weekly / monthly), presented through an interactive **Streamlit** dashboard covering **19 tickers** across 6 sectors.
+
+<!-- Replace with an actual screenshot or GIF of your dashboard -->
+<!-- To capture: run the dashboard, take a screenshot, save as docs/dashboard_preview.png -->
+<p align="center">
+  <img src="docs/dashboard_preview.png" alt="Dashboard Preview" width="900">
+  <br>
+  <em>Interactive Streamlit dashboard with 10 analytical panels</em>
+</p>
+
+<!-- Uncomment once deployed -->
+<!-- [**🚀 Live Demo**](https://your-deployment-url.streamlit.app) -->
 
 ## Features
 
 - **FinBERT Sentiment Analysis** — Fine-tuned ProsusAI/FinBERT model scores headlines as positive / negative / neutral with calibrated confidence
-- **Multi-Horizon XGBoost Predictor** — Predicts return direction (UP / DOWN) over 1-day, 5-day, and 20-day horizons using 29 lagged features (sentiment + price + technical), validated with walk-forward cross-validation (no lookahead bias)
-- **10 Technical Indicators** — RSI-14, MACD (line + signal + histogram), Bollinger %B, ATR-14, 52-week high/low distance, volume z-score
+- **Multi-Horizon XGBoost Predictor** — Predicts return direction (UP / DOWN) over 1-day, 5-day, and 20-day horizons using 38 lagged features (sentiment + price + technical), validated with walk-forward cross-validation (no lookahead bias)
+- **22 Technical Indicators** — RSI-14, MACD (line + signal + histogram), Bollinger %B + width, ATR-14, 52-week high/low distance, volume z-score, Stochastic %D, OBV slope, EMA cross, ADX-14, CCI-20, MFI-14, ROC-10, VWAP distance
 - **VIX Market Fear Index** — CBOE VIX integrated as a cross-market risk feature
 - **19 Tickers, 6 Sectors** — Tech (AAPL, MSFT, GOOGL, AMZN, NVDA, META), Finance (JPM, GS, BAC), Healthcare (JNJ, UNH, PFE), Consumer (TSLA, WMT, KO), Energy (XOM, CVX), Industrial (CAT, BA)
 - **Live News Pipeline** — Aggregates headlines from 3 sources (Google News RSS, Yahoo Finance RSS, yfinance API) with disk caching
@@ -28,11 +39,11 @@ A machine learning project that analyses financial news sentiment using **FinBER
 
 | Horizon | Accuracy | F1 | AUC | Precision | Recall |
 |---------|----------|------|------|-----------|--------|
-| Daily (1-day) | 52.9% | 62.8% | 51.7% | 54.7% | 73.6% |
-| Weekly (5-day) | 60.4% | 67.8% | 63.6% | 65.6% | 70.2% |
-| Monthly (20-day) | 71.4% | 81.0% | 71.0% | 74.1% | 89.4% |
+| Daily (1-day) | 52.9% | 62.9% | 51.5% | 54.8% | 73.8% |
+| Weekly (5-day) | 63.4% | 70.4% | 66.8% | 68.0% | 73.1% |
+| Monthly (20-day) | 72.6% | 81.7% | 73.0% | 74.6% | 90.3% |
 
-All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 251 trading days.
+All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 251 trading days. Feature set: 38 features (9 sentiment + 3 price + 19 technical + 7 engineered).
 
 ## Project Structure
 
@@ -157,7 +168,7 @@ print(result["signal"], result["confidence"], result["avg_score"])
 | Historical prices | Yahoo Finance | 19 tickers + VIX | Feb 2025 - Feb 2026 |
 | Live headlines | Google News RSS, Yahoo Finance RSS, yfinance API | Any ticker | Real-time |
 
-**Coverage**: 4,769 price rows, 7,993 news articles, 251 trading days, 40 features per row.
+**Coverage**: 4,769 price rows, 7,993 news articles, 251 trading days, 38 features per row.
 
 ## Models
 
@@ -171,11 +182,11 @@ print(result["signal"], result["confidence"], result["avg_score"])
 ### XGBoost (Multi-Horizon Return Prediction)
 
 - **Task**: Binary classification — return direction (UP / DOWN) over 1, 5, and 20 trading days
-- **Features**: 29 features (9 sentiment + 4 price + 10 technical + 6 engineered), all lagged by 1 day
+- **Features**: 38 features (9 sentiment + 3 price + 19 technical + 7 engineered), all lagged by 1 day
   - **Sentiment**: avg sentiment, std, range, pct positive/negative, article count, rolling 3d/5d
-  - **Price**: daily return, intraday range, gap%, volume change
-  - **Technical**: RSI-14, MACD (line/signal/histogram), Bollinger %B, ATR-14, 52w high/low distance, volume z-score, VIX
-  - **Engineered**: return lags (2d/3d), 5d volatility, 5d avg return, sentiment momentum, news coverage flag
+  - **Price**: daily return, intraday range, gap%
+  - **Technical**: RSI-14, MACD (line/signal/histogram), Bollinger %B + width, ATR-14, 52w high/low distance, volume z-score, Stochastic %D, OBV slope, EMA cross, ADX-14, CCI-20, MFI-14, ROC-10, VWAP distance, VIX
+  - **Engineered**: return lag (3d/10d), 5d/10d volatility, 5d/10d avg return, sentiment momentum
 - **Validation**: Walk-forward (expanding window) — no lookahead bias
 - **Saved to**: `models/saved_models/xgboost_return_{1d,5d,20d}/`
 

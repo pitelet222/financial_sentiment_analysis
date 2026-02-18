@@ -11,6 +11,7 @@ Usage:
     python scripts/download_news_extended.py              # download next 2 missing tickers
     python scripts/download_news_extended.py --all        # download ALL missing tickers (multi-day)
     python scripts/download_news_extended.py --ticker AMZN # download a specific ticker
+    python scripts/download_news_extended.py --ticker MSFT --force  # re-download & merge with existing
 """
 
 import os
@@ -138,12 +139,13 @@ def _ticker_csv_exists(ticker: str) -> bool:
 
 
 def _get_tickers_to_download(specific_ticker: str | None = None,
-                              download_all: bool = False) -> list[str]:
+                              download_all: bool = False,
+                              force: bool = False) -> list[str]:
     """Determine which tickers still need downloading."""
     if specific_ticker:
-        if _ticker_csv_exists(specific_ticker):
+        if _ticker_csv_exists(specific_ticker) and not force:
             print(f"  [SKIP] {specific_ticker} — CSV already exists. "
-                  f"Delete it to re-download.")
+                  f"Use --force to re-download and merge.")
             return []
         return [specific_ticker]
 
@@ -173,15 +175,18 @@ def main():
     # Parse CLI args
     specific_ticker = None
     download_all = False
+    force = False
     args = sys.argv[1:]
     if "--all" in args:
         download_all = True
+    if "--force" in args:
+        force = True
     if "--ticker" in args:
         idx = args.index("--ticker")
         if idx + 1 < len(args):
             specific_ticker = args[idx + 1].upper()
 
-    tickers_to_dl = _get_tickers_to_download(specific_ticker, download_all)
+    tickers_to_dl = _get_tickers_to_download(specific_ticker, download_all, force)
     if not tickers_to_dl:
         return
 
@@ -233,9 +238,20 @@ def main():
         df = df.drop_duplicates(subset=["title"], keep="first")
         df = df.sort_values("published_at", ascending=False).reset_index(drop=True)
 
-        # Save
+        # Merge with existing CSV if present (--force mode)
         filename = f"news_{ticker}_{START_DATE}_to_{END_DATE}.csv"
         path = RAW_DIR / filename
+        if path.exists():
+            old_df = pd.read_csv(path)
+            old_df["published_at"] = pd.to_datetime(
+                old_df["published_at"], errors="coerce"
+            )
+            df = pd.concat([old_df, df], ignore_index=True)
+            df = df.drop_duplicates(subset=["title"], keep="first")
+            df = df.sort_values("published_at", ascending=False).reset_index(drop=True)
+            print(f"  [MERGED] {len(old_df)} old + new -> {len(df)} unique articles")
+
+        # Save
         df.to_csv(path, index=False)
         print(f"  [SAVED] {len(df)} unique articles -> {path.name}")
 

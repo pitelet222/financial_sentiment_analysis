@@ -66,7 +66,6 @@ PRICE_FEATURES = [
     "daily_return",
     "intraday_range",
     "gap_pct",
-    "volume_change",
 ]
 
 # Technical analysis indicators (computed by data_loader.add_technical_indicators)
@@ -81,9 +80,7 @@ TECHNICAL_FEATURES = [
     "distance_52w_high",
     "distance_52w_low",
     "volume_zscore",
-    "stoch_k",
     "stoch_d",
-    "williams_r",
     "obv_slope",
     "ema_cross",
     "adx_14",
@@ -91,22 +88,18 @@ TECHNICAL_FEATURES = [
     "mfi_14",
     "roc_10",
     "vwap_distance",
-    "keltner_pos",
     "VIX_close",
 ]
 
 # Additional engineered features (computed in prepare_features)
 ENGINEERED_FEATURES = [
-    "return_lag2",
     "return_lag3",
-    "return_lag5",
     "return_lag10",
     "volatility_5d",
     "volatility_10d",
     "avg_return_5d",
     "avg_return_10d",
     "sentiment_momentum",  # 3d rolling - 5d rolling
-    "news_has_coverage",   # binary: any articles?
 ]
 
 # Supported targets
@@ -160,9 +153,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Engineered features (already lagged via base features) ---
     # Additional return lags
-    df["return_lag2"] = df.groupby("ticker")["daily_return"].shift(1)
     df["return_lag3"] = df.groupby("ticker")["daily_return"].shift(2)
-    df["return_lag5"] = df.groupby("ticker")["daily_return"].shift(4)
     df["return_lag10"] = df.groupby("ticker")["daily_return"].shift(9)
 
     # 5-day and 10-day volatility and average return
@@ -187,9 +178,6 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df["sentiment_momentum"] = (
         df["sentiment_rolling_3d"] - df["sentiment_rolling_5d"]
     )
-
-    # Binary: any news coverage?
-    df["news_has_coverage"] = (df["article_count"] > 0).astype(int)
 
     return df
 

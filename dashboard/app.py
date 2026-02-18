@@ -31,6 +31,8 @@ import streamlit as st
 
 from scipy import stats as sp_stats
 
+import datetime as _dt
+
 from src.data.data_loader import (
     load_all_news,
     load_merged_dataset,
@@ -198,15 +200,26 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Date range
+    # Date range — derive bounds dynamically from the actual data
+    # so the picker always covers whatever CSVs exist on disk.
+    @st.cache_data(show_spinner=False)
+    def _data_date_bounds():
+        """Return (min_date, max_date) from the merged CSV."""
+        try:
+            _tmp = load_merged_dataset()
+            _tmp["date"] = pd.to_datetime(_tmp["date"])
+            return _tmp["date"].min(), _tmp["date"].max()
+        except Exception:
+            return pd.Timestamp(DEFAULT_START), pd.Timestamp(DEFAULT_END)
+
+    _data_min, _data_max = _data_date_bounds()
+
     st.subheader("Date Range")
-    start_date = pd.Timestamp(DEFAULT_START)
-    end_date = pd.Timestamp(DEFAULT_END)
     date_range = st.date_input(
         "Select range",
-        value=(start_date.date(), end_date.date()),
-        min_value=start_date.date(),
-        max_value=end_date.date(),
+        value=(_data_min.date(), _data_max.date()),
+        min_value=_data_min.date(),
+        max_value=_data_max.date(),
         help="Filter data within the available date window.",
     )
 
@@ -214,9 +227,34 @@ with st.sidebar:
     if isinstance(date_range, tuple) and len(date_range) == 2:
         sel_start, sel_end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
     else:
-        sel_start, sel_end = start_date, end_date
+        sel_start, sel_end = _data_min, _data_max
 
     st.markdown("---")
+
+    # --- Data freshness badge ---
+    _csv_path = _PROJECT_ROOT / "data" / "processed" / f"merged_{DEFAULT_START}_to_{DEFAULT_END}.csv"
+    if _csv_path.exists():
+        import os as _os
+        _mtime = _dt.datetime.fromtimestamp(_os.path.getmtime(_csv_path))
+        _hours_ago = (_dt.datetime.now() - _mtime).total_seconds() / 3600
+        if _hours_ago < 1:
+            _fresh_txt = "just now"
+        elif _hours_ago < 24:
+            _fresh_txt = f"{_hours_ago:.0f}h ago"
+        else:
+            _fresh_txt = f"{_hours_ago / 24:.0f}d ago"
+        _fresh_color = "#00c853" if _hours_ago < 24 else "#ff9800" if _hours_ago < 72 else "#f44336"
+        st.markdown(
+            f'<div style="background:{_fresh_color}22; border:1px solid {_fresh_color};'
+            f' border-radius:8px; padding:6px 10px; text-align:center; margin-bottom:6px;">'
+            f'<span style="color:{_fresh_color}; font-weight:600;">📡 Data updated: {_fresh_txt}</span><br>'
+            f'<span style="font-size:0.75rem; opacity:0.8;">{_mtime.strftime("%Y-%m-%d %H:%M")}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning("Merged dataset not found — run the data pipeline first.")
+
     st.caption("Data: Alpha Vantage + Yahoo Finance")
     st.caption("Model: ProsusAI/FinBERT (fine-tuned)")
     st.caption("XGBoost: Return direction predictor")
@@ -679,7 +717,18 @@ if not df.empty:
             st.info("Not enough data for correlation analysis.")
 
 else:
-    st.warning("No data found for the selected ticker and date range.")
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:2.5rem; text-align:center; margin:1rem 0;">'
+        '<div style="font-size:3rem;">📉</div>'
+        '<div style="font-size:1.2rem; margin-top:0.5rem;">No price data found for '
+        f'<b>{selected_ticker}</b> in this date range</div>'
+        '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.4rem;">'
+        'Try adjusting the date range in the sidebar, or make sure price data has been '
+        'downloaded with <code>python scripts/download_prices.py</code></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # =========================================================================
 # Live Headlines Section
@@ -734,7 +783,16 @@ def score_live_headlines(ticker: str) -> pd.DataFrame:
 live_df = score_live_headlines(selected_ticker)
 
 if live_df.empty:
-    st.info(f"No live headlines found for {selected_ticker}.")
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:2rem; text-align:center; margin:1rem 0;">'
+        '<div style="font-size:2.5rem;">📭</div>'
+        f'<div style="font-size:1.1rem; margin-top:0.5rem;">No live headlines found for <b>{selected_ticker}</b></div>'
+        '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.3rem;">'
+        'RSS feeds may be temporarily unavailable or this ticker may not have recent coverage.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 else:
     # ---- Live signal card row ----
     live_scores = live_df["sentiment_score"].dropna()
@@ -895,8 +953,8 @@ st.caption(
 )
 
 # Ticker input — default to project tickers + a few popular ones
-_COMPARISON_DEFAULTS = ["AAPL", "MSFT"]
-_POPULAR_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META"]
+_COMPARISON_DEFAULTS = ["AAPL", "MSFT", "GOOGL", "NVDA"]
+_POPULAR_TICKERS = DEFAULT_TICKERS
 
 compare_tickers = st.multiselect(
     "Tickers to compare",
@@ -1040,9 +1098,23 @@ if len(compare_tickers) >= 2:
     st.dataframe(styled_comp, width="stretch", hide_index=True)
 
 elif len(compare_tickers) == 1:
-    st.info("Select at least 2 tickers to compare.")
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:1.5rem; text-align:center;">'
+        '<div style="font-size:1.5rem;">👆</div>'
+        '<div style="font-size:0.95rem; margin-top:0.3rem;">Select at least <b>2 tickers</b> to compare side-by-side.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 else:
-    st.info("Select tickers above to see a side-by-side comparison.")
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:1.5rem; text-align:center;">'
+        '<div style="font-size:1.5rem;">📊</div>'
+        '<div style="font-size:0.95rem; margin-top:0.3rem;">Select tickers above to see a live sentiment comparison.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # =========================================================================
 # Alert Simulation Panel
@@ -1348,8 +1420,15 @@ st.header("🤖 XGBoost — Next-Day Return Prediction")
 xgb_model = load_xgb_model()
 
 if xgb_model is None:
-    st.warning(
-        "XGBoost model not found. Run `python scripts/train_xgboost.py` first."
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:2rem; text-align:center; margin:1rem 0;">'
+        '<div style="font-size:2.5rem;">🤖</div>'
+        '<div style="font-size:1.1rem; margin-top:0.5rem;">XGBoost model not trained yet</div>'
+        '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.3rem;">'
+        'Run <code>python scripts/train_multihorizon.py</code> to train the return predictor.</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
 else:
     # --- Run prediction for selected ticker ---
@@ -1452,7 +1531,6 @@ else:
                             "sentiment_rolling_3d", "sentiment_rolling_5d",
                             "sentiment_momentum", "pct_positive", "pct_negative",
                             "article_count", "sentiment_std", "sentiment_range",
-                            "news_has_coverage",
                         ) else "#2196f3"
                         for n in feat_names[::-1]
                     ],
@@ -1563,9 +1641,15 @@ hz_models = load_multihorizon_models()
 hz_available = {k: v for k, v in hz_models.items() if v is not None}
 
 if not hz_available:
-    st.warning(
-        "No multi-horizon models found. "
-        "Run `python scripts/train_multihorizon.py` first."
+    st.markdown(
+        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
+        ' padding:2rem; text-align:center; margin:1rem 0;">'
+        '<div style="font-size:2.5rem;">🤖</div>'
+        '<div style="font-size:1.1rem; margin-top:0.5rem;">Multi-horizon models not trained yet</div>'
+        '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.3rem;">'
+        'Run <code>python scripts/train_multihorizon.py</code> to train 1d / 5d / 20d predictors.</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
 else:
     # --- Predict for each horizon ---
