@@ -35,7 +35,7 @@ from datetime import datetime
 DEFAULT_TICKERS = ["AAPL", "MSFT"]
 
 # Default date range — format: "YYYY-MM-DD"
-DEFAULT_START_DATE = "2025-11-01"
+DEFAULT_START_DATE = "2025-02-13"
 DEFAULT_END_DATE = "2026-02-13"
 
 # Where to save the raw price data (relative to project root)

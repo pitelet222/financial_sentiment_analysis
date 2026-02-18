@@ -29,19 +29,19 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+from scipy import stats as sp_stats
+
 from src.data.data_loader import (
     load_all_news,
-    load_all_prices,
     load_merged_dataset,
     add_session_column,
-    assign_trading_day,
-    RAW_DATA_DIR,
     DEFAULT_TICKERS,
     DEFAULT_START,
     DEFAULT_END,
 )
 from src.data.news_fetcher import fetch_and_cache
 from src.models.sentiment_analyzer import SentimentAnalyzer
+from src.models.return_predictor import ReturnPredictor, prepare_features
 
 # =========================================================================
 # Page configuration
@@ -147,6 +147,34 @@ st.markdown(
     .rule-pass { color: #00c853; font-weight: 600; }
     .rule-fail { color: #ff1744; font-weight: 600; }
     .rule-neutral { color: #888; }
+
+    /* XGBoost prediction cards */
+    .pred-card {
+        padding: 1.5rem;
+        border-radius: 1rem;
+        text-align: center;
+        color: white;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .pred-up   { background: linear-gradient(135deg, #00c853, #009624); }
+    .pred-down { background: linear-gradient(135deg, #ff1744, #c4001d); }
+    .pred-neutral { background: linear-gradient(135deg, #ffc107, #ff8f00); }
+    .feature-bar {
+        display: flex;
+        align-items: center;
+        padding: 0.25rem 0;
+        font-size: 0.85rem;
+    }
+    .feature-bar .fname {
+        width: 45%;
+        text-align: right;
+        padding-right: 0.8rem;
+        color: #555;
+    }
+    .feature-bar .fval {
+        flex: 1;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -191,6 +219,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Data: Alpha Vantage + Yahoo Finance")
     st.caption("Model: ProsusAI/FinBERT (fine-tuned)")
+    st.caption("XGBoost: Return direction predictor")
 
 # =========================================================================
 # Data loading (cached)
@@ -213,6 +242,14 @@ def get_news() -> pd.DataFrame:
     news["date"] = news["published_at"].dt.floor("D")
     return news
 
+
+@st.cache_resource(show_spinner="Loading XGBoost model …")
+def load_xgb_model():
+    """Load the trained XGBoost return predictor."""
+    model_dir = _PROJECT_ROOT / "models" / "saved_models" / "xgboost_return"
+    if not (model_dir / "model.json").exists():
+        return None
+    return ReturnPredictor.load(model_dir)
 
 merged_all = get_merged()
 news_all = get_news()
@@ -583,8 +620,6 @@ if not df.empty:
             st.info("Not enough data points for a scatter plot.")
 
     with col_metrics:
-        from scipy import stats as sp_stats
-
         valid = df.dropna(subset=["avg_overall_sentiment", "daily_return"])
         if len(valid) >= 5:
             pearson_r, pearson_p = sp_stats.pearsonr(
@@ -1240,6 +1275,202 @@ else:
     )
 
 # =========================================================================
+# Panel 9 — XGBoost Return Prediction
+# =========================================================================
+
+st.markdown("---")
+st.header("🤖 XGBoost — Next-Day Return Prediction")
+
+xgb_model = load_xgb_model()
+
+if xgb_model is None:
+    st.warning(
+        "XGBoost model not found. Run `python scripts/train_xgboost.py` first."
+    )
+else:
+    # --- Run prediction for selected ticker ---
+    try:
+        pred_result = xgb_model.predict_next_day(merged_all, selected_ticker)
+        direction = pred_result["direction"]
+        prob_up = pred_result["prob_up"]
+        prob_down = pred_result["prob_down"]
+        confidence = pred_result["confidence"]
+        based_on = pred_result["based_on_date"]
+
+        # --- Prediction card ---
+        xp1, xp2 = st.columns([1, 2])
+
+        with xp1:
+            if direction == "UP":
+                card_cls = "pred-up"
+                arrow = "▲"
+                prob_shown = prob_up
+            else:
+                card_cls = "pred-down"
+                arrow = "▼"
+                prob_shown = prob_down
+
+            st.markdown(
+                f'<div class="pred-card {card_cls}">'
+                f'<div style="font-size:2.5rem;">{arrow}</div>'
+                f'<div style="font-size:1.8rem;">PREDICT {direction}</div>'
+                f'<div style="font-size:1rem; opacity:0.9; margin-top:0.3rem;">'
+                f'Probability: {prob_shown:.1%}</div>'
+                f'<div style="font-size:0.85rem; opacity:0.75; margin-top:0.2rem;">'
+                f'Confidence: {confidence:.1%} · Based on {based_on}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Model performance card
+            acc = xgb_model.metrics.get("accuracy", 0)
+            auc = xgb_model.metrics.get("roc_auc", 0)
+            f1 = xgb_model.metrics.get("f1", 0)
+            n_preds = xgb_model.metrics.get("n_predictions", 0)
+
+            st.markdown(
+                '<div class="metric-card" style="margin-top:0.8rem;">'
+                '<div class="metric-label">Walk-Forward Performance</div>'
+                f'<div class="metric-value">{acc:.1%} acc</div>'
+                f'<div class="metric-delta delta-neutral">'
+                f'AUC {auc:.3f} · F1 {f1:.1%} · n={n_preds}</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        with xp2:
+            # --- Probability gauge ---
+            fig_prob = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=prob_up * 100,
+                title={"text": "P(Up) vs P(Down)", "font": {"size": 14}},
+                number={"suffix": "% up", "font": {"size": 22}},
+                gauge={
+                    "axis": {"range": [0, 100], "tickvals": [0, 25, 50, 75, 100]},
+                    "bar": {
+                        "color": "#00c853" if prob_up > 0.5 else "#ff1744",
+                        "thickness": 0.3,
+                    },
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "borderwidth": 0,
+                    "steps": [
+                        {"range": [0, 50], "color": "rgba(255,23,68,0.12)"},
+                        {"range": [50, 100], "color": "rgba(0,200,83,0.12)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "#ffc107", "width": 3},
+                        "thickness": 0.8,
+                        "value": 50,
+                    },
+                },
+            ))
+            fig_prob.update_layout(
+                height=200,
+                margin=dict(l=30, r=30, t=40, b=10),
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_prob, key="xgb_prob_gauge", width="stretch")
+
+            # --- Feature importance chart ---
+            if xgb_model.feature_importance:
+                top_n = 10
+                feat_names = list(xgb_model.feature_importance.keys())[:top_n]
+                feat_vals = list(xgb_model.feature_importance.values())[:top_n]
+
+                fig_imp = go.Figure(go.Bar(
+                    x=feat_vals[::-1],
+                    y=[n.replace("_", " ").title() for n in feat_names[::-1]],
+                    orientation="h",
+                    marker_color=[
+                        "#00c853" if n in (
+                            "avg_overall_sentiment", "avg_ticker_sentiment",
+                            "sentiment_rolling_3d", "sentiment_rolling_5d",
+                            "sentiment_momentum", "pct_positive", "pct_negative",
+                            "article_count", "sentiment_std", "sentiment_range",
+                            "news_has_coverage",
+                        ) else "#2196f3"
+                        for n in feat_names[::-1]
+                    ],
+                ))
+                fig_imp.update_layout(
+                    title="Feature Importance (top 10)",
+                    xaxis_title="Importance (gain)",
+                    height=300,
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_imp, key="xgb_feat_imp", width="stretch")
+
+    except Exception as e:
+        st.error(f"Prediction error: {e}")
+
+    # --- Walk-forward accuracy over time ---
+    if hasattr(xgb_model, "_wf_results") and xgb_model._wf_results is not None:
+        wf = xgb_model._wf_results.copy()
+        wf["date"] = pd.to_datetime(wf["date"])
+        wf["correct"] = (wf["actual"] == wf["predicted"]).astype(int)
+
+        # Rolling accuracy (20-day window)
+        wf_sorted = wf.sort_values("date")
+        wf_sorted["rolling_acc"] = (
+            wf_sorted["correct"].rolling(20, min_periods=5).mean()
+        )
+
+        fig_wf = go.Figure()
+        fig_wf.add_trace(go.Scatter(
+            x=wf_sorted["date"],
+            y=wf_sorted["rolling_acc"] * 100,
+            mode="lines",
+            name="20-day rolling accuracy",
+            line=dict(color="#2196f3", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(33,150,243,0.1)",
+        ))
+        fig_wf.add_hline(
+            y=50, line_dash="dash", line_color="#ff8f00",
+            annotation_text="Coin flip (50%)",
+        )
+        fig_wf.update_layout(
+            title="Walk-Forward Validation: Rolling Accuracy Over Time",
+            xaxis_title="Date",
+            yaxis_title="Accuracy (%)",
+            yaxis=dict(range=[20, 80]),
+            height=300,
+            margin=dict(l=10, r=10, t=40, b=30),
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_wf, key="xgb_wf_accuracy", width="stretch")
+
+        # Per-ticker metrics
+        per_ticker = xgb_model.metrics.get("per_ticker", {})
+        if per_ticker:
+            tk_cols = st.columns(len(per_ticker))
+            for i, (tkr, tm) in enumerate(per_ticker.items()):
+                with tk_cols[i]:
+                    st.markdown(
+                        f'<div class="metric-card">'
+                        f'<div class="metric-label">{tkr} Walk-Forward</div>'
+                        f'<div class="metric-value">{tm["accuracy"]:.1%}</div>'
+                        f'<div class="metric-delta delta-neutral">'
+                        f'F1={tm["f1"]:.1%} · n={tm["n_predictions"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    st.markdown(
+        "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
+        "margin-top:1rem;'>🤖 XGBoost predicts next-day return direction "
+        "using lagged sentiment + price features. Walk-forward validated "
+        "(no lookahead bias). Not financial advice.</div>",
+        unsafe_allow_html=True,
+    )
+
+# =========================================================================
 # Footer
 # =========================================================================
 
@@ -1247,7 +1478,7 @@ st.markdown("---")
 st.markdown(
     "<div style='text-align:center; opacity:0.5; font-size:0.85rem;'>"
     "Financial Sentiment Analysis Dashboard · Built with Streamlit + Plotly · "
-    "Model: ProsusAI/FinBERT (fine-tuned)"
+    "Model: ProsusAI/FinBERT (fine-tuned) + XGBoost"
     "</div>",
     unsafe_allow_html=True,
 )

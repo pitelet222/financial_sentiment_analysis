@@ -53,7 +53,7 @@ PROCESSED_DATA_DIR = _PROJECT_ROOT / "data" / "processed"
 DEFAULT_TICKERS: List[str] = ["AAPL", "MSFT"]
 
 # Default date range
-DEFAULT_START = "2025-11-01"
+DEFAULT_START = "2025-02-13"
 DEFAULT_END = "2026-02-13"
 
 # US market hours in Eastern Time (ET)
@@ -409,7 +409,7 @@ def aggregate_sentiment(
     agg = (
         news[needed_cols]
         .groupby(group_cols)
-        .apply(_agg_fn)  # type: ignore[arg-type]
+        .apply(_agg_fn, include_groups=False)  # type: ignore[arg-type]
         .reset_index()
     )
     return agg
@@ -650,23 +650,23 @@ def load_merged_dataset(
     # --- Step 1: Load raw data ---
     print("[1/7] Loading news CSVs ...")
     news = load_all_news(tickers, data_dir, start_date, end_date)
-    print(f"       → {len(news)} articles loaded.")
+    print(f"       -> {len(news)} articles loaded.")
 
     print("[2/7] Loading price CSVs ...")
     prices = load_all_prices(tickers, data_dir, start_date, end_date)
-    print(f"       → {len(prices)} price rows loaded.")
+    print(f"       -> {len(prices)} price rows loaded.")
 
     # --- Step 2: Session classification ---
     print("[3/7] Classifying market sessions ...")
     news = add_session_column(news)
     session_counts = news["session"].value_counts().to_dict()
-    print(f"       → Sessions: {session_counts}")
+    print(f"       -> Sessions: {session_counts}")
 
     # --- Step 3: Assign trading days ---
     print("[4/7] Assigning articles to trading days ...")
     trading_dates = prices["date"].drop_duplicates()
     news = assign_trading_day(news, trading_dates)
-    print(f"       → {len(news)} articles matched to trading days.")
+    print(f"       -> {len(news)} articles matched to trading days.")
 
     # --- Step 4: Aggregate sentiment ---
     print("[5/7] Aggregating daily sentiment ...")
@@ -675,7 +675,7 @@ def load_merged_dataset(
         sentiment = aggregate_by_session(news, sessions=session_filter)
     else:
         sentiment = aggregate_sentiment(news)
-    print(f"       → {len(sentiment)} daily-sentiment rows.")
+    print(f"       -> {len(sentiment)} daily-sentiment rows.")
 
     # --- Step 5: Price features ---
     print("[6/7] Computing price features ...")
@@ -698,9 +698,9 @@ def load_merged_dataset(
 
     # --- Summary ---
     print(f"\n{'=' * 55}")
-    print(f"  Final dataset: {merged.shape[0]} rows × {merged.shape[1]} columns")
+    print(f"  Final dataset: {merged.shape[0]} rows x {merged.shape[1]} columns")
     print(f"  Tickers: {merged['ticker'].unique().tolist()}")
-    print(f"  Date range: {merged['date'].min().date()} → {merged['date'].max().date()}")
+    print(f"  Date range: {merged['date'].min().date()} -> {merged['date'].max().date()}")
     days_with_news = (merged["article_count"] > 0).sum()
     print(f"  Trading days with news: {days_with_news} / {len(merged)}")
     print(f"{'=' * 55}")

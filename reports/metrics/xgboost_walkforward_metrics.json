@@ -1,0 +1,28 @@
+{
+  "accuracy": 0.5026737967914439,
+  "precision": 0.519298245614035,
+  "recall": 0.751269035532995,
+  "f1": 0.6141078838174274,
+  "roc_auc": 0.5503455791677421,
+  "n_predictions": 374,
+  "n_correct": 188,
+  "class_distribution": {
+    "actual_up": 197,
+    "actual_down": 177,
+    "predicted_up": 285,
+    "predicted_down": 89
+  },
+  "min_train_days": 60,
+  "per_ticker": {
+    "AAPL": {
+      "accuracy": 0.5240641711229946,
+      "f1": 0.6244725738396625,
+      "n_predictions": 187
+    },
+    "MSFT": {
+      "accuracy": 0.48128342245989303,
+      "f1": 0.6040816326530613,
+      "n_predictions": 187
+    }
+  }
+}

@@ -380,7 +380,7 @@ class SentimentAnalyzer:
         agg = (
             news_with_preds[needed]
             .groupby(group_cols)
-            .apply(_agg)
+            .apply(_agg, include_groups=False)
             .reset_index()
         )
         return agg

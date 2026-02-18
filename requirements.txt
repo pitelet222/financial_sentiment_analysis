@@ -8,32 +8,30 @@
 # --- Data handling ---
 numpy
 pandas
-matplotlib
-
 
 # --- Machine Learning ---
-scikit-learn
 torch
 transformers
 scipy
-seaborn
+xgboost                   # Gradient boosting for return prediction
+scikit-learn              # ML utilities (metrics, preprocessing)
 
 # --- Financial data ---
 yfinance                  # Yahoo Finance API wrapper (stock prices)
 
 # --- News data ---
-requests                  # HTTP requests to NewsAPI
+requests                  # HTTP requests (Alpha Vantage news API)
 feedparser                # RSS feed parsing for live news pipeline
 
 # --- Environment management ---
 python-dotenv             # Load API keys from .env file
 
-# --- API / Deployment ---
-fastapi
-uvicorn                   # ASGI server for FastAPI
-
 # --- Dashboard ---
 streamlit                 # Interactive web dashboard
 plotly                    # Interactive charts for Streamlit
 
-textblob
+# --- Notebooks only (not needed for dashboard/src) ---
+# Uncomment these if you plan to run the Jupyter notebooks:
+# matplotlib
+# seaborn
+# textblob
