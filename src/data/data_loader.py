@@ -60,7 +60,7 @@ DEFAULT_TICKERS: List[str] = [
 ]
 
 # Default date range
-DEFAULT_START = "2025-02-13"
+DEFAULT_START = "2023-02-13"
 DEFAULT_END = "2026-02-13"
 
 # US market hours in Eastern Time (ET)
@@ -155,13 +155,22 @@ def load_all_news(
     for ticker in tickers:
         fp = data_dir / f"news_{ticker}_{start_date}_to_{end_date}.csv"
         if not fp.exists():
-            warnings.warn(f"News file not found: {fp}")
-            continue
+            # Fallback: find any news CSV for this ticker regardless of date range
+            candidates = sorted(data_dir.glob(f"news_{ticker}_*.csv"))
+            if candidates:
+                fp = candidates[-1]  # pick the most recent file
+            else:
+                warnings.warn(f"News file not found: {fp}")
+                continue
         frames.append(load_news_csv(fp))
 
     # --- SEC EDGAR 8-K filings (balances bullish news bias) ---
     for ticker in tickers:
         fp = data_dir / f"edgar_{ticker}_{start_date}_to_{end_date}.csv"
+        if not fp.exists():
+            candidates = sorted(data_dir.glob(f"edgar_{ticker}_*.csv"))
+            if candidates:
+                fp = candidates[-1]
         if fp.exists():
             frames.append(load_news_csv(fp))
 
@@ -726,6 +735,13 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
         prices.loc[mask, "return_20d"] = (fwd_20d >= 0).astype(float)
         prices.loc[mask, "return_20d"] = prices.loc[mask, "return_20d"].where(
             fwd_20d.notna()
+        )
+
+        # 60-day (quarterly) forward return direction
+        fwd_60d = close.shift(-60) / close - 1
+        prices.loc[mask, "return_60d"] = (fwd_60d >= 0).astype(float)
+        prices.loc[mask, "return_60d"] = prices.loc[mask, "return_60d"].where(
+            fwd_60d.notna()
         )
 
     return prices

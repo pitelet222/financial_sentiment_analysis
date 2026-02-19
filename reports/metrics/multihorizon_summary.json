@@ -2,46 +2,47 @@
   "horizons_trained": [
     "1d",
     "5d",
-    "20d"
+    "20d",
+    "60d"
   ],
-  "total_elapsed_minutes": 2.3,
-  "data_path": "C:\\Users\\yagoc\\OneDrive\\Escritorio\\Pite\\pite_py_projects\\financial-sentiment-analysis\\data\\processed\\merged_2025-02-13_to_2026-02-13.csv",
+  "total_elapsed_minutes": 18.8,
+  "data_path": "C:\\Users\\yagoc\\OneDrive\\Escritorio\\Pite\\pite_py_projects\\financial-sentiment-analysis\\data\\processed\\merged_2023-02-13_to_2026-02-13.csv",
   "min_train_days": 60,
   "results": {
     "1d": {
       "label": "Daily (next day)",
-      "elapsed_seconds": 56.4,
-      "accuracy": 0.5279383429672447,
-      "f1": 0.6259541984732825,
-      "roc_auc": 0.5222768822831624,
-      "precision": 0.5481283422459893,
-      "recall": 0.7295373665480427,
-      "n_predictions": 3114,
+      "elapsed_seconds": 444.8,
+      "accuracy": 0.5168130390062505,
+      "f1": 0.6104981185024555,
+      "roc_auc": 0.5039105668867214,
+      "precision": 0.537330189738408,
+      "recall": 0.7067336089781453,
+      "n_predictions": 12639,
       "top_5_features": {
-        "XOM": {
-          "accuracy": 0.6219512195121951,
-          "f1": 0.7181818181818181,
-          "n_predictions": 164
-        },
-        "WMT": {
-          "accuracy": 0.6036585365853658,
-          "f1": 0.6798029556650246,
-          "n_predictions": 164
-        },
-        "BAC": {
-          "accuracy": 0.5975609756097561,
-          "f1": 0.6944444444444444,
-          "n_predictions": 164
-        },
         "GOOGL": {
-          "accuracy": 0.5609756097560976,
-          "f1": 0.6635514018691588,
-          "n_predictions": 164
+          "accuracy": 0.5540540540540541,
+          "f1": 0.6373626373626373,
+          "n_predictions": 666
         },
-        "JNJ": {
-          "accuracy": 0.5555555555555556,
-          "f1": 0.6538461538461539,
-          "n_predictions": 162
+        "XOM": {
+          "accuracy": 0.5435435435435435,
+          "f1": 0.6431924882629108,
+          "n_predictions": 666
+        },
+        "AAPL": {
+          "accuracy": 0.5330330330330331,
+          "f1": 0.6485875706214689,
+          "n_predictions": 666
+        },
+        "CVX": {
+          "accuracy": 0.5330330330330331,
+          "f1": 0.6336866902237926,
+          "n_predictions": 666
+        },
+        "NVDA": {
+          "accuracy": 0.5330330330330331,
+          "f1": 0.6146220570012392,
+          "n_predictions": 666
         }
       },
       "hyperparameters": {
@@ -59,38 +60,38 @@
     },
     "5d": {
       "label": "Weekly (5-day)",
-      "elapsed_seconds": 53.5,
-      "accuracy": 0.6372971182510765,
-      "f1": 0.7047721757886223,
-      "roc_auc": 0.6673197520736487,
-      "precision": 0.6846516500785752,
-      "recall": 0.7261111111111112,
-      "n_predictions": 3019,
+      "elapsed_seconds": 337.1,
+      "accuracy": 0.6068239795918368,
+      "f1": 0.6721616591332092,
+      "roc_auc": 0.6273373945942149,
+      "precision": 0.6332665330661322,
+      "recall": 0.7161473087818697,
+      "n_predictions": 12544,
       "top_5_features": {
-        "BAC": {
-          "accuracy": 0.7169811320754716,
-          "f1": 0.7668393782383419,
-          "n_predictions": 159
+        "UNH": {
+          "accuracy": 0.6717095310136157,
+          "f1": 0.7095046854082999,
+          "n_predictions": 661
         },
-        "BA": {
-          "accuracy": 0.6918238993710691,
-          "f1": 0.751269035532995,
-          "n_predictions": 159
-        },
-        "AAPL": {
-          "accuracy": 0.6729559748427673,
-          "f1": 0.7204301075268817,
-          "n_predictions": 159
-        },
-        "CVX": {
-          "accuracy": 0.6729559748427673,
-          "f1": 0.7547169811320755,
-          "n_predictions": 159
+        "META": {
+          "accuracy": 0.6574923547400612,
+          "f1": 0.7227722772277227,
+          "n_predictions": 654
         },
         "NVDA": {
-          "accuracy": 0.6729559748427673,
-          "f1": 0.7346938775510204,
-          "n_predictions": 159
+          "accuracy": 0.6399394856278366,
+          "f1": 0.7047146401985112,
+          "n_predictions": 661
+        },
+        "JPM": {
+          "accuracy": 0.6396946564885496,
+          "f1": 0.7330316742081447,
+          "n_predictions": 655
+        },
+        "MSFT": {
+          "accuracy": 0.6384266263237519,
+          "f1": 0.7191539365452408,
+          "n_predictions": 661
         }
       },
       "hyperparameters": {
@@ -108,38 +109,38 @@
     },
     "20d": {
       "label": "Monthly (20-day)",
-      "elapsed_seconds": 26.0,
-      "accuracy": 0.7256766642282371,
-      "f1": 0.8176956733106465,
-      "roc_auc": 0.7291231502996208,
-      "precision": 0.7429328621908127,
-      "recall": 0.9091891891891892,
-      "n_predictions": 2734,
+      "elapsed_seconds": 188.7,
+      "accuracy": 0.6395301411208092,
+      "f1": 0.7470665674546391,
+      "roc_auc": 0.6428705604782612,
+      "precision": 0.6513624114183052,
+      "recall": 0.8757380568974772,
+      "n_predictions": 12259,
       "top_5_features": {
-        "CAT": {
-          "accuracy": 0.8819444444444444,
-          "f1": 0.9372693726937269,
-          "n_predictions": 144
+        "GS": {
+          "accuracy": 0.7275541795665634,
+          "f1": 0.8103448275862069,
+          "n_predictions": 646
+        },
+        "JPM": {
+          "accuracy": 0.6921875,
+          "f1": 0.8004052684903749,
+          "n_predictions": 640
+        },
+        "WMT": {
+          "accuracy": 0.6919504643962848,
+          "f1": 0.8145386766076421,
+          "n_predictions": 646
+        },
+        "META": {
+          "accuracy": 0.6901408450704225,
+          "f1": 0.7729357798165137,
+          "n_predictions": 639
         },
         "GOOGL": {
-          "accuracy": 0.8680555555555556,
-          "f1": 0.9260700389105059,
-          "n_predictions": 144
-        },
-        "JNJ": {
-          "accuracy": 0.8591549295774648,
-          "f1": 0.9242424242424242,
-          "n_predictions": 142
-        },
-        "AAPL": {
-          "accuracy": 0.7986111111111112,
-          "f1": 0.8806584362139918,
-          "n_predictions": 144
-        },
-        "BA": {
-          "accuracy": 0.7638888888888888,
-          "f1": 0.8316831683168316,
-          "n_predictions": 144
+          "accuracy": 0.673374613003096,
+          "f1": 0.7949465500485908,
+          "n_predictions": 646
         }
       },
       "hyperparameters": {
@@ -153,6 +154,55 @@
         "reg_lambda": 3.0,
         "scale_pos_weight": 1.0,
         "min_child_weight": 5
+      }
+    },
+    "60d": {
+      "label": "Quarterly (60-day)",
+      "elapsed_seconds": 154.7,
+      "accuracy": 0.6973306668985305,
+      "f1": 0.80521515304124,
+      "roc_auc": 0.6945738357966589,
+      "precision": 0.7035298719076953,
+      "recall": 0.9412611198325485,
+      "n_predictions": 11501,
+      "top_5_features": {
+        "WMT": {
+          "accuracy": 0.8399339933993399,
+          "f1": 0.9130044843049328,
+          "n_predictions": 606
+        },
+        "JPM": {
+          "accuracy": 0.8383333333333334,
+          "f1": 0.9105990783410138,
+          "n_predictions": 600
+        },
+        "GS": {
+          "accuracy": 0.8267326732673267,
+          "f1": 0.9026876737720111,
+          "n_predictions": 606
+        },
+        "GOOGL": {
+          "accuracy": 0.764026402640264,
+          "f1": 0.862895493767977,
+          "n_predictions": 606
+        },
+        "META": {
+          "accuracy": 0.7495826377295493,
+          "f1": 0.8414376321353065,
+          "n_predictions": 599
+        }
+      },
+      "hyperparameters": {
+        "n_estimators": 150,
+        "max_depth": 3,
+        "learning_rate": 0.03,
+        "subsample": 0.6,
+        "colsample_bytree": 0.7,
+        "gamma": 3.0,
+        "reg_alpha": 2.0,
+        "reg_lambda": 5.0,
+        "scale_pos_weight": 1.0,
+        "min_child_weight": 7
       }
     }
   }

@@ -36,7 +36,10 @@ from src.models.return_predictor import ReturnPredictor
 # Config
 # ---------------------------------------------------------------------------
 
-DATA_PATH = PROJECT_ROOT / "data" / "processed" / "merged_2025-02-13_to_2026-02-13.csv"
+DATA_DIR = PROJECT_ROOT / "data" / "processed"
+# Auto-detect merged CSV (pick the latest one)
+_merged_candidates = sorted(DATA_DIR.glob("merged_*.csv"))
+DATA_PATH = _merged_candidates[-1] if _merged_candidates else DATA_DIR / "merged.csv"
 
 # Model output dirs
 MODEL_BASE = PROJECT_ROOT / "models" / "saved_models"
@@ -83,14 +86,27 @@ HORIZON_PARAMS = {
         "scale_pos_weight": 1.0,
         "min_child_weight": 5,
     },
+    "60d": {
+        "n_estimators": 150,
+        "max_depth": 3,
+        "learning_rate": 0.03,
+        "subsample": 0.6,
+        "colsample_bytree": 0.7,
+        "gamma": 3.0,
+        "reg_alpha": 2.0,
+        "reg_lambda": 5.0,
+        "scale_pos_weight": 1.0,
+        "min_child_weight": 7,
+    },
 }
 
 MIN_TRAIN_DAYS = 60
-HORIZONS = ["1d", "5d", "20d"]
+HORIZONS = ["1d", "5d", "20d", "60d"]
 HORIZON_LABELS = {
     "1d": "Daily (next day)",
     "5d": "Weekly (5-day)",
     "20d": "Monthly (20-day)",
+    "60d": "Quarterly (60-day)",
 }
 
 

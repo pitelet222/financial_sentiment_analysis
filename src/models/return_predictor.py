@@ -107,6 +107,7 @@ TARGETS = {
     "1d": "return_direction",   # 1 = up, 0 = down (next day)
     "5d": "return_5d",          # 1 = up, 0 = down (next 5 days)
     "20d": "return_20d",        # 1 = up, 0 = down (next 20 days)
+    "60d": "return_60d",        # 1 = up, 0 = down (next 60 days / 1 quarter)
 }
 
 TARGET = "return_direction"  # default (1d)

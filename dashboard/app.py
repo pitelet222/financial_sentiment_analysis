@@ -281,23 +281,14 @@ def get_news() -> pd.DataFrame:
     return news
 
 
-@st.cache_resource(show_spinner="Loading XGBoost model …")
-def load_xgb_model():
-    """Load the trained XGBoost return predictor (multi-horizon 1d model)."""
-    model_dir = _PROJECT_ROOT / "models" / "saved_models" / "xgboost_return_1d"
-    if not (model_dir / "model.json").exists():
-        return None
-    return ReturnPredictor.load(model_dir)
-
-
 @st.cache_resource(show_spinner="Loading multi-horizon models …")
 def load_multihorizon_models():
-    """Load XGBoost models for 1d, 5d, and 20d horizons.
+    """Load XGBoost models for 1d, 5d, 20d, and 60d horizons.
 
     Returns dict mapping horizon -> ReturnPredictor (or None if missing).
     """
     models = {}
-    for hz in ("1d", "5d", "20d"):
+    for hz in ("1d", "5d", "20d", "60d"):
         model_dir = _PROJECT_ROOT / "models" / "saved_models" / f"xgboost_return_{hz}"
         if (model_dir / "model.json").exists():
             models[hz] = ReturnPredictor.load(model_dir)
@@ -1414,231 +1405,11 @@ else:
     )
 
 # =========================================================================
-# Panel 9 — XGBoost Return Prediction
+# Panel 9 — Unified Multi-Horizon XGBoost Predictions
 # =========================================================================
 
 st.markdown("---")
-st.header("🤖 XGBoost — Next-Day Return Prediction")
-
-xgb_model = load_xgb_model()
-
-if xgb_model is None:
-    st.markdown(
-        '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
-        ' padding:2rem; text-align:center; margin:1rem 0;">'
-        '<div style="font-size:2.5rem;">🤖</div>'
-        '<div style="font-size:1.1rem; margin-top:0.5rem;">XGBoost model not trained yet</div>'
-        '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.3rem;">'
-        'Run <code>python scripts/train_multihorizon.py</code> to train the return predictor.</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-else:
-    # --- Run prediction for selected ticker ---
-    try:
-        pred_result = xgb_model.predict_next_day(merged_all, selected_ticker)
-        direction = pred_result["direction"]
-        prob_up = pred_result["prob_up"]
-        prob_down = pred_result["prob_down"]
-        confidence = pred_result["confidence"]
-        based_on = pred_result["based_on_date"]
-
-        # --- Prediction card ---
-        xp1, xp2 = st.columns([1, 2])
-
-        with xp1:
-            if direction == "UP":
-                card_cls = "pred-up"
-                arrow = "▲"
-                prob_shown = prob_up
-            else:
-                card_cls = "pred-down"
-                arrow = "▼"
-                prob_shown = prob_down
-
-            st.markdown(
-                f'<div class="pred-card {card_cls}">'
-                f'<div style="font-size:2.5rem;">{arrow}</div>'
-                f'<div style="font-size:1.8rem;">PREDICT {direction}</div>'
-                f'<div style="font-size:1rem; opacity:0.9; margin-top:0.3rem;">'
-                f'Probability: {prob_shown:.1%}</div>'
-                f'<div style="font-size:0.85rem; opacity:0.75; margin-top:0.2rem;">'
-                f'Confidence: {confidence:.1%} · Based on {based_on}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            # Model performance card
-            acc = xgb_model.metrics.get("accuracy", 0)
-            auc = xgb_model.metrics.get("roc_auc", 0)
-            f1 = xgb_model.metrics.get("f1", 0)
-            n_preds = xgb_model.metrics.get("n_predictions", 0)
-
-            st.markdown(
-                '<div class="metric-card" style="margin-top:0.8rem;">'
-                '<div class="metric-label">Walk-Forward Performance</div>'
-                f'<div class="metric-value">{acc:.1%} acc</div>'
-                f'<div class="metric-delta delta-neutral">'
-                f'AUC {auc:.3f} · F1 {f1:.1%} · n={n_preds}</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-        with xp2:
-            # --- Probability gauge ---
-            fig_prob = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=prob_up * 100,
-                title={"text": "P(Up) vs P(Down)", "font": {"size": 14}},
-                number={"suffix": "% up", "font": {"size": 22}},
-                gauge={
-                    "axis": {"range": [0, 100], "tickvals": [0, 25, 50, 75, 100]},
-                    "bar": {
-                        "color": "#00c853" if prob_up > 0.5 else "#ff1744",
-                        "thickness": 0.3,
-                    },
-                    "bgcolor": "rgba(0,0,0,0)",
-                    "borderwidth": 0,
-                    "steps": [
-                        {"range": [0, 50], "color": "rgba(255,23,68,0.12)"},
-                        {"range": [50, 100], "color": "rgba(0,200,83,0.12)"},
-                    ],
-                    "threshold": {
-                        "line": {"color": "#ffc107", "width": 3},
-                        "thickness": 0.8,
-                        "value": 50,
-                    },
-                },
-            ))
-            fig_prob.update_layout(
-                height=200,
-                margin=dict(l=30, r=30, t=40, b=10),
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_prob, key="xgb_prob_gauge", width="stretch")
-
-            # --- Feature importance chart ---
-            if xgb_model.feature_importance:
-                top_n = 10
-                feat_names = list(xgb_model.feature_importance.keys())[:top_n]
-                feat_vals = list(xgb_model.feature_importance.values())[:top_n]
-
-                fig_imp = go.Figure(go.Bar(
-                    x=feat_vals[::-1],
-                    y=[n.replace("_", " ").title() for n in feat_names[::-1]],
-                    orientation="h",
-                    marker_color=[
-                        "#00c853" if n in (
-                            "avg_overall_sentiment", "avg_ticker_sentiment",
-                            "sentiment_rolling_3d", "sentiment_rolling_5d",
-                            "sentiment_momentum", "pct_positive", "pct_negative",
-                            "article_count", "sentiment_std", "sentiment_range",
-                        ) else "#2196f3"
-                        for n in feat_names[::-1]
-                    ],
-                ))
-                fig_imp.update_layout(
-                    title="Feature Importance (top 10)",
-                    xaxis_title="Importance (gain)",
-                    height=300,
-                    margin=dict(l=10, r=10, t=40, b=30),
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig_imp, key="xgb_feat_imp", width="stretch")
-
-    except Exception as e:
-        st.error(f"Prediction error: {e}")
-
-    # --- Walk-forward accuracy over time ---
-    if hasattr(xgb_model, "_wf_results") and xgb_model._wf_results is not None:
-        wf = xgb_model._wf_results.copy()
-        wf["date"] = pd.to_datetime(wf["date"])
-        wf["correct"] = (wf["actual"] == wf["predicted"]).astype(int)
-
-        # Rolling accuracy (20-day window)
-        wf_sorted = wf.sort_values("date")
-        wf_sorted["rolling_acc"] = (
-            wf_sorted["correct"].rolling(20, min_periods=5).mean()
-        )
-
-        fig_wf = go.Figure()
-        fig_wf.add_trace(go.Scatter(
-            x=wf_sorted["date"],
-            y=wf_sorted["rolling_acc"] * 100,
-            mode="lines",
-            name="20-day rolling accuracy",
-            line=dict(color="#2196f3", width=2),
-            fill="tozeroy",
-            fillcolor="rgba(33,150,243,0.1)",
-        ))
-        fig_wf.add_hline(
-            y=50, line_dash="dash", line_color="#ff8f00",
-            annotation_text="Coin flip (50%)",
-        )
-        fig_wf.update_layout(
-            title="Walk-Forward Validation: Rolling Accuracy Over Time",
-            xaxis_title="Date",
-            yaxis_title="Accuracy (%)",
-            yaxis=dict(range=[20, 80]),
-            height=300,
-            margin=dict(l=10, r=10, t=40, b=30),
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_wf, key="xgb_wf_accuracy", width="stretch")
-
-        # Per-ticker metrics — compact grid (5 per row)
-        per_ticker = xgb_model.metrics.get("per_ticker", {})
-        if per_ticker:
-            tickers_sorted = sorted(
-                per_ticker.items(), key=lambda x: x[1]["accuracy"], reverse=True
-            )
-            COLS_PER_ROW = 5
-            for row_start in range(0, len(tickers_sorted), COLS_PER_ROW):
-                row_items = tickers_sorted[row_start : row_start + COLS_PER_ROW]
-                tk_cols = st.columns(COLS_PER_ROW)
-                for i, (tkr, tm) in enumerate(row_items):
-                    acc = tm["accuracy"]
-                    # colour-code: green ≥55%, red <50%, amber otherwise
-                    if acc >= 0.55:
-                        border_color = "#00c853"
-                    elif acc < 0.50:
-                        border_color = "#ff1744"
-                    else:
-                        border_color = "#ffc107"
-                    with tk_cols[i]:
-                        st.markdown(
-                            f'<div style="background:#f8f9fa; border-radius:0.5rem; '
-                            f'padding:0.5rem 0.6rem; text-align:center; '
-                            f'border-left:3px solid {border_color}; '
-                            f'margin-bottom:0.4rem;">'
-                            f'<div style="font-size:0.7rem; color:#666;">{tkr}</div>'
-                            f'<div style="font-size:1.1rem; font-weight:700;">'
-                            f'{acc:.1%}</div>'
-                            f'<div style="font-size:0.65rem; color:#888;">'
-                            f'F1={tm["f1"]:.1%} · n={tm["n_predictions"]}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-    st.markdown(
-        "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
-        "margin-top:1rem;'>XGBoost predicts next-day return direction "
-        "using lagged sentiment + price features. Walk-forward validated "
-        "(no lookahead bias). Not financial advice.</div>",
-        unsafe_allow_html=True,
-    )
-
-# =========================================================================
-# Panel 10 — Multi-Horizon Prediction (1d / 5d / 20d)
-# =========================================================================
-
-st.markdown("---")
-st.header("Multi-Horizon Prediction (Daily / Weekly / Monthly)")
+st.header("🤖 Multi-Horizon XGBoost Predictions")
 
 hz_models = load_multihorizon_models()
 hz_available = {k: v for k, v in hz_models.items() if v is not None}
@@ -1648,20 +1419,22 @@ if not hz_available:
         '<div style="background:#23272e; border:1px solid #444; border-radius:12px;'
         ' padding:2rem; text-align:center; margin:1rem 0;">'
         '<div style="font-size:2.5rem;">🤖</div>'
-        '<div style="font-size:1.1rem; margin-top:0.5rem;">Multi-horizon models not trained yet</div>'
+        '<div style="font-size:1.1rem; margin-top:0.5rem;">XGBoost models not trained yet</div>'
         '<div style="font-size:0.85rem; opacity:0.7; margin-top:0.3rem;">'
-        'Run <code>python scripts/train_multihorizon.py</code> to train 1d / 5d / 20d predictors.</div>'
+        'Run <code>python scripts/train_multihorizon.py</code> to train the return predictors.</div>'
         '</div>',
         unsafe_allow_html=True,
     )
 else:
-    # --- Predict for each horizon ---
+    # --- Horizon metadata ---
     HORIZON_META = {
         "1d": {"label": "Daily (1-day)", "icon": "1D", "color_up": "#00c853", "color_dn": "#ff1744"},
         "5d": {"label": "Weekly (5-day)", "icon": "5D", "color_up": "#00e676", "color_dn": "#ff5252"},
         "20d": {"label": "Monthly (20-day)", "icon": "20D", "color_up": "#69f0ae", "color_dn": "#ff8a80"},
+        "60d": {"label": "Quarterly (60-day)", "icon": "60D", "color_up": "#b9f6ca", "color_dn": "#ff80ab"},
     }
 
+    # --- Predict for each horizon ---
     hz_preds = {}
     for hz, mdl in hz_available.items():
         try:
@@ -1692,8 +1465,7 @@ else:
                 prob_down = pred["prob_down"]
                 confidence = pred["confidence"]
                 card_cls = "pred-up" if direction == "UP" else "pred-down"
-                arrow = "^" if direction == "UP" else "v"
-                prob_shown = prob_up if direction == "UP" else prob_down
+                arrow = "▲" if direction == "UP" else "▼"
 
                 st.markdown(
                     f'<div class="pred-card {card_cls}">'
@@ -1762,6 +1534,128 @@ else:
         fig_mh.add_hline(y=50, line_dash="dash", line_color="#ffc107", annotation_text="50%")
         st.plotly_chart(fig_mh, key="multihorizon_bar", width="stretch")
 
+    # --- Detailed view for selected horizon (gauge + feature importance) ---
+    detail_hz = st.selectbox(
+        "Detailed view for horizon:",
+        options=list(hz_available.keys()),
+        format_func=lambda h: HORIZON_META[h]["label"],
+        key="detail_horizon_select",
+    )
+
+    detail_mdl = hz_available[detail_hz]
+    detail_pred = hz_preds.get(detail_hz, {})
+
+    if detail_pred and "error" not in detail_pred:
+        detail_prob_up = detail_pred["prob_up"]
+
+        d_col1, d_col2 = st.columns([1, 1])
+
+        with d_col1:
+            # --- Probability gauge ---
+            fig_prob = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=detail_prob_up * 100,
+                title={"text": f"P(Up) — {HORIZON_META[detail_hz]['label']}", "font": {"size": 14}},
+                number={"suffix": "% up", "font": {"size": 22}},
+                gauge={
+                    "axis": {"range": [0, 100], "tickvals": [0, 25, 50, 75, 100]},
+                    "bar": {
+                        "color": "#00c853" if detail_prob_up > 0.5 else "#ff1744",
+                        "thickness": 0.3,
+                    },
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "borderwidth": 0,
+                    "steps": [
+                        {"range": [0, 50], "color": "rgba(255,23,68,0.12)"},
+                        {"range": [50, 100], "color": "rgba(0,200,83,0.12)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "#ffc107", "width": 3},
+                        "thickness": 0.8,
+                        "value": 50,
+                    },
+                },
+            ))
+            fig_prob.update_layout(
+                height=220,
+                margin=dict(l=30, r=30, t=40, b=10),
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_prob, key="xgb_prob_gauge", width="stretch")
+
+        with d_col2:
+            # --- Feature importance chart ---
+            if detail_mdl.feature_importance:
+                top_n = 10
+                feat_names = list(detail_mdl.feature_importance.keys())[:top_n]
+                feat_vals = list(detail_mdl.feature_importance.values())[:top_n]
+
+                sentiment_features = {
+                    "avg_overall_sentiment", "avg_ticker_sentiment",
+                    "sentiment_rolling_3d", "sentiment_rolling_5d",
+                    "sentiment_momentum", "pct_positive", "pct_negative",
+                    "article_count", "sentiment_std", "sentiment_range",
+                }
+
+                fig_imp = go.Figure(go.Bar(
+                    x=feat_vals[::-1],
+                    y=[n.replace("_", " ").title() for n in feat_names[::-1]],
+                    orientation="h",
+                    marker_color=[
+                        "#00c853" if n in sentiment_features else "#2196f3"
+                        for n in feat_names[::-1]
+                    ],
+                ))
+                fig_imp.update_layout(
+                    title=f"Feature Importance — {HORIZON_META[detail_hz]['label']} (top 10)",
+                    xaxis_title="Importance (gain)",
+                    height=300,
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_imp, key="xgb_feat_imp", width="stretch")
+
+    # --- Walk-forward accuracy over time (for selected horizon) ---
+    if hasattr(detail_mdl, "_wf_results") and detail_mdl._wf_results is not None:
+        wf = detail_mdl._wf_results.copy()
+        wf["date"] = pd.to_datetime(wf["date"])
+        wf["correct"] = (wf["actual"] == wf["predicted"]).astype(int)
+
+        wf_sorted = wf.sort_values("date")
+        wf_sorted["rolling_acc"] = (
+            wf_sorted["correct"].rolling(20, min_periods=5).mean()
+        )
+
+        fig_wf = go.Figure()
+        fig_wf.add_trace(go.Scatter(
+            x=wf_sorted["date"],
+            y=wf_sorted["rolling_acc"] * 100,
+            mode="lines",
+            name="20-day rolling accuracy",
+            line=dict(color="#2196f3", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(33,150,243,0.1)",
+        ))
+        fig_wf.add_hline(
+            y=50, line_dash="dash", line_color="#ff8f00",
+            annotation_text="Coin flip (50%)",
+        )
+        fig_wf.update_layout(
+            title=f"Walk-Forward Validation: Rolling Accuracy — {HORIZON_META[detail_hz]['label']}",
+            xaxis_title="Date",
+            yaxis_title="Accuracy (%)",
+            yaxis=dict(range=[20, 80]),
+            height=300,
+            margin=dict(l=10, r=10, t=40, b=30),
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_wf, key="xgb_wf_accuracy", width="stretch")
+
     # --- Model comparison table ---
     if hz_available:
         comparison_data = []
@@ -1803,7 +1697,7 @@ else:
                     [1, "#00c853"],
                 ],
                 zmin=35,
-                zmax=65,
+                zmax=85,
                 text=[[f"{v*100:.1f}%" for v in row] for row in hm_df.values],
                 texttemplate="%{text}",
                 textfont={"size": 11},
@@ -1821,10 +1715,44 @@ else:
             )
             st.plotly_chart(fig_hm, key="multihorizon_heatmap", width="stretch")
 
+    # --- Per-ticker metrics grid (from selected horizon) ---
+    per_ticker = detail_mdl.metrics.get("per_ticker", {})
+    if per_ticker:
+        st.markdown(f"**Per-Ticker Metrics — {HORIZON_META[detail_hz]['label']}**")
+        tickers_sorted = sorted(
+            per_ticker.items(), key=lambda x: x[1]["accuracy"], reverse=True
+        )
+        COLS_PER_ROW = 5
+        for row_start in range(0, len(tickers_sorted), COLS_PER_ROW):
+            row_items = tickers_sorted[row_start : row_start + COLS_PER_ROW]
+            tk_cols = st.columns(COLS_PER_ROW)
+            for i, (tkr, tm) in enumerate(row_items):
+                acc = tm["accuracy"]
+                if acc >= 0.55:
+                    border_color = "#00c853"
+                elif acc < 0.50:
+                    border_color = "#ff1744"
+                else:
+                    border_color = "#ffc107"
+                with tk_cols[i]:
+                    st.markdown(
+                        f'<div style="background:#f8f9fa; border-radius:0.5rem; '
+                        f'padding:0.5rem 0.6rem; text-align:center; '
+                        f'border-left:3px solid {border_color}; '
+                        f'margin-bottom:0.4rem;">'
+                        f'<div style="font-size:0.7rem; color:#666;">{tkr}</div>'
+                        f'<div style="font-size:1.1rem; font-weight:700;">'
+                        f'{acc:.1%}</div>'
+                        f'<div style="font-size:0.65rem; color:#888;">'
+                        f'F1={tm["f1"]:.1%} · n={tm["n_predictions"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
     st.markdown(
         "<div style='text-align:center; opacity:0.5; font-size:0.75rem; "
         "margin-top:1rem;'>Multi-horizon models predict return direction over "
-        "1, 5, and 20 trading days. Each model uses walk-forward validation "
+        "1, 5, 20, and 60 trading days. Each model uses walk-forward validation "
         "with lagged technical + sentiment features. Not financial advice.</div>",
         unsafe_allow_html=True,
     )
