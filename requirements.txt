@@ -3,7 +3,12 @@
 # =============================================================================
 # Install all dependencies with:
 #   pip install -r requirements.txt
+#
+# PyTorch: CPU-only build via --extra-index-url saves ~1.5 GB vs CUDA.
+# On Streamlit Cloud this is critical for staying within memory limits.
 # =============================================================================
+
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 # --- Data handling ---
 numpy
@@ -29,9 +34,3 @@ python-dotenv             # Load API keys from .env file
 # --- Dashboard ---
 streamlit                 # Interactive web dashboard
 plotly                    # Interactive charts for Streamlit
-
-# --- Notebooks only (not needed for dashboard/src) ---
-# Uncomment these if you plan to run the Jupyter notebooks:
-# matplotlib
-# seaborn
-# textblob

@@ -14,11 +14,15 @@ env/
 data/raw/*
 data/processed/*
 data/cache/
+!data/processed/merged_*.csv
+!data/raw/edgar_*.csv
 !data/**/.gitkeep
 
 # Models
-models/saved_models/*
+models/saved_models/finbert_finetuned/*
 models/checkpoints/*
+!models/saved_models/finbert_finetuned/README.md
+!models/saved_models/xgboost_*/
 !models/**/.gitkeep
 
 # Logs

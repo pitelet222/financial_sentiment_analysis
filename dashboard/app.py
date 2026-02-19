@@ -737,8 +737,10 @@ else:
 st.markdown("---")
 st.subheader("🔴 Live Headlines — Real-Time Sentiment")
 st.caption(
-    "Fresh headlines from Google News, Yahoo Finance RSS & yfinance API, "
-    "scored by FinBERT in real time.  Cache refreshes every hour."
+    "Fresh headlines from Google News, Yahoo Finance RSS, yfinance API & "
+    "SEC EDGAR 8-K filings, scored by FinBERT in real time.  "
+    "EDGAR filings provide a more balanced sentiment (neutral/negative) "
+    "to offset the bullish bias of news headlines.  Cache refreshes every hour."
 )
 
 

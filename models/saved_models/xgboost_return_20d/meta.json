@@ -1,0 +1,214 @@
+{
+  "horizon": "20d",
+  "target_col": "return_20d",
+  "feature_cols": [
+    "avg_overall_sentiment",
+    "avg_ticker_sentiment",
+    "sentiment_std",
+    "sentiment_range",
+    "pct_positive",
+    "pct_negative",
+    "article_count",
+    "sentiment_rolling_3d",
+    "sentiment_rolling_5d",
+    "daily_return",
+    "intraday_range",
+    "gap_pct",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "macd_histogram",
+    "bb_pct_b",
+    "bb_width",
+    "atr_14",
+    "distance_52w_high",
+    "distance_52w_low",
+    "volume_zscore",
+    "stoch_d",
+    "obv_slope",
+    "ema_cross",
+    "adx_14",
+    "cci_20",
+    "mfi_14",
+    "roc_10",
+    "vwap_distance",
+    "VIX_close",
+    "return_lag3",
+    "return_lag10",
+    "volatility_5d",
+    "volatility_10d",
+    "avg_return_5d",
+    "avg_return_10d",
+    "sentiment_momentum"
+  ],
+  "model_params": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "subsample": 0.7,
+    "colsample_bytree": 0.8,
+    "colsample_bylevel": 1.0,
+    "min_child_weight": 5,
+    "gamma": 2.0,
+    "reg_alpha": 1.0,
+    "reg_lambda": 3.0,
+    "scale_pos_weight": 1.0,
+    "random_state": 42,
+    "eval_metric": "logloss"
+  },
+  "metrics": {
+    "horizon": "20d",
+    "target": "return_20d",
+    "accuracy": 0.719824433065106,
+    "precision": 0.7411032028469751,
+    "recall": 0.9005405405405406,
+    "f1": 0.813079551000488,
+    "roc_auc": 0.7292313807019689,
+    "n_predictions": 2734,
+    "n_correct": 1968,
+    "class_distribution": {
+      "actual_up": 1850,
+      "actual_down": 884,
+      "predicted_up": 2248,
+      "predicted_down": 486
+    },
+    "min_train_days": 60,
+    "per_ticker": {
+      "AAPL": {
+        "accuracy": 0.8125,
+        "f1": 0.8831168831168831,
+        "n_predictions": 144
+      },
+      "AMZN": {
+        "accuracy": 0.5625,
+        "f1": 0.7096774193548387,
+        "n_predictions": 144
+      },
+      "BA": {
+        "accuracy": 0.7430555555555556,
+        "f1": 0.8177339901477833,
+        "n_predictions": 144
+      },
+      "BAC": {
+        "accuracy": 0.7013888888888888,
+        "f1": 0.8036529680365296,
+        "n_predictions": 144
+      },
+      "CAT": {
+        "accuracy": 0.8611111111111112,
+        "f1": 0.9253731343283582,
+        "n_predictions": 144
+      },
+      "CVX": {
+        "accuracy": 0.7569444444444444,
+        "f1": 0.8309178743961353,
+        "n_predictions": 144
+      },
+      "GOOGL": {
+        "accuracy": 0.8611111111111112,
+        "f1": 0.9230769230769231,
+        "n_predictions": 144
+      },
+      "GS": {
+        "accuracy": 0.7638888888888888,
+        "f1": 0.853448275862069,
+        "n_predictions": 144
+      },
+      "JNJ": {
+        "accuracy": 0.8661971830985915,
+        "f1": 0.9283018867924528,
+        "n_predictions": 142
+      },
+      "JPM": {
+        "accuracy": 0.6666666666666666,
+        "f1": 0.7692307692307693,
+        "n_predictions": 144
+      },
+      "KO": {
+        "accuracy": 0.6944444444444444,
+        "f1": 0.7471264367816092,
+        "n_predictions": 144
+      },
+      "META": {
+        "accuracy": 0.6388888888888888,
+        "f1": 0.7204301075268817,
+        "n_predictions": 144
+      },
+      "MSFT": {
+        "accuracy": 0.6458333333333334,
+        "f1": 0.6909090909090909,
+        "n_predictions": 144
+      },
+      "NVDA": {
+        "accuracy": 0.6111111111111112,
+        "f1": 0.7477477477477478,
+        "n_predictions": 144
+      },
+      "PFE": {
+        "accuracy": 0.7291666666666666,
+        "f1": 0.8186046511627907,
+        "n_predictions": 144
+      },
+      "TSLA": {
+        "accuracy": 0.6180555555555556,
+        "f1": 0.7263681592039801,
+        "n_predictions": 144
+      },
+      "UNH": {
+        "accuracy": 0.6875,
+        "f1": 0.7692307692307693,
+        "n_predictions": 144
+      },
+      "WMT": {
+        "accuracy": 0.7361111111111112,
+        "f1": 0.8389830508474576,
+        "n_predictions": 144
+      },
+      "XOM": {
+        "accuracy": 0.7222222222222222,
+        "f1": 0.7938144329896907,
+        "n_predictions": 144
+      }
+    }
+  },
+  "feature_importance": {
+    "article_count": 0.051604531705379486,
+    "bb_width": 0.044115543365478516,
+    "macd_histogram": 0.04193190485239029,
+    "distance_52w_high": 0.0415029302239418,
+    "sentiment_std": 0.04000739008188248,
+    "sentiment_range": 0.03937888145446777,
+    "macd_signal": 0.037973809987306595,
+    "volatility_10d": 0.03790677338838577,
+    "distance_52w_low": 0.03746185824275017,
+    "roc_10": 0.03651012107729912,
+    "mfi_14": 0.03298303112387657,
+    "intraday_range": 0.03111235797405243,
+    "macd": 0.030202019959688187,
+    "bb_pct_b": 0.030188607051968575,
+    "vwap_distance": 0.030159493908286095,
+    "atr_14": 0.02960219793021679,
+    "ema_cross": 0.02877722680568695,
+    "sentiment_rolling_3d": 0.02771885134279728,
+    "rsi_14": 0.027315616607666016,
+    "sentiment_rolling_5d": 0.025175364688038826,
+    "adx_14": 0.024739164859056473,
+    "VIX_close": 0.024692855775356293,
+    "volatility_5d": 0.022222323343157768,
+    "sentiment_momentum": 0.021571705117821693,
+    "stoch_d": 0.020508425310254097,
+    "gap_pct": 0.020468315109610558,
+    "avg_return_10d": 0.019781893119215965,
+    "volume_zscore": 0.019721750169992447,
+    "cci_20": 0.019359057769179344,
+    "avg_return_5d": 0.01911100000143051,
+    "obv_slope": 0.018395233899354935,
+    "return_lag3": 0.018292775377631187,
+    "return_lag10": 0.01734800636768341,
+    "daily_return": 0.016173560172319412,
+    "avg_ticker_sentiment": 0.015985529869794846,
+    "avg_overall_sentiment": 0.0,
+    "pct_positive": 0.0,
+    "pct_negative": 0.0
+  }
+}

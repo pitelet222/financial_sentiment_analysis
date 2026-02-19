@@ -39,13 +39,13 @@
 
 | Horizon | XGBoost | Naive Baseline | Lift | F1 | AUC |
 |---------|---------|----------------|------|------|------|
-| Daily (1-day) | **52.9%** | 53.3% (always UP) | −0.4% | 62.9% | 51.5% |
-| Weekly (5-day) | **63.4%** | 57.7% (always UP) | **+5.7%** | 70.4% | 66.8% |
-| Monthly (20-day) | **72.6%** | 64.0% (always UP) | **+8.6%** | 81.7% | 73.0% |
+| Daily (1-day) | **51.0%** | 53.3% (always UP) | −2.3% | 61.8% | 51.3% |
+| Weekly (5-day) | **63.6%** | 57.7% (always UP) | **+5.9%** | 70.4% | 67.1% |
+| Monthly (20-day) | **72.0%** | 64.0% (always UP) | **+8.0%** | 81.3% | 72.9% |
 
-> **Naive baseline** = always predict the majority class (UP). The market had a bullish bias during this period (53–64% of days were UP), so any useful model must beat these numbers. The 1d model is at baseline — expected given only 2/19 tickers have sentiment data. The 5d and 20d models show meaningful lift, especially monthly (+8.6%), driven by technical indicators and VIX.
+> **Naive baseline** = always predict the majority class (UP). The market had a bullish bias during this period (53–64% of days were UP), so any useful model must beat these numbers. The 1d model is at baseline — expected given only 2/19 tickers have sentiment data. The 5d and 20d models show meaningful lift, especially monthly (+8.0%), driven by technical indicators and VIX.
 
-All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 251 trading days. Feature set: 38 features (9 sentiment + 3 price + 19 technical + 7 engineered).
+All metrics from walk-forward (expanding window) validation with no lookahead bias across 19 tickers and 224 trading days. Feature set: 38 features (9 sentiment + 3 price + 19 technical + 7 engineered). Data sources: Alpha Vantage news + SEC EDGAR 8-K filings + Yahoo Finance prices + CBOE VIX.
 
 ## Project Structure
 

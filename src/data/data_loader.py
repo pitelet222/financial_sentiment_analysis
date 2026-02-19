@@ -93,6 +93,9 @@ def load_news_csv(filepath: Path) -> pd.DataFrame:
     """
     df = pd.read_csv(filepath)
     df["published_at"] = pd.to_datetime(df["published_at"], errors="coerce")
+    # Normalise to tz-naive so EDGAR (UTC) and Alpha Vantage (naive) can concat
+    if df["published_at"].dt.tz is not None:
+        df["published_at"] = df["published_at"].dt.tz_localize(None)
     df["date"] = df["published_at"].dt.floor("D")  # type: ignore[union-attr]  # midnight
     return df
 
@@ -147,12 +150,20 @@ def load_all_news(
         tickers = DEFAULT_TICKERS
 
     frames: List[pd.DataFrame] = []
+
+    # --- Alpha Vantage news CSVs ---
     for ticker in tickers:
         fp = data_dir / f"news_{ticker}_{start_date}_to_{end_date}.csv"
         if not fp.exists():
             warnings.warn(f"News file not found: {fp}")
             continue
         frames.append(load_news_csv(fp))
+
+    # --- SEC EDGAR 8-K filings (balances bullish news bias) ---
+    for ticker in tickers:
+        fp = data_dir / f"edgar_{ticker}_{start_date}_to_{end_date}.csv"
+        if fp.exists():
+            frames.append(load_news_csv(fp))
 
     if not frames:
         warnings.warn(
