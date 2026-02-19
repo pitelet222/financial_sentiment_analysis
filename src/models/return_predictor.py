@@ -103,6 +103,17 @@ ENGINEERED_FEATURES = [
     "sentiment_surprise",   # deviation from rolling mean (anomaly signal)
 ]
 
+# Market context features (S&P 500 + sector ETF)
+# NOTE: Available in the merged dataset (data pipeline computes them) but
+# excluded from the XGBoost model — ablation showed they are redundant
+# with VIX and existing technicals, causing slight AUC degradation.
+MARKET_FEATURES: List[str] = [
+    "SPY_return",           # S&P 500 daily return (market direction)
+    "excess_return",        # stock return - SPY return (alpha vs market)
+    "sector_return",        # sector ETF daily return
+    "sector_relative",      # stock return - sector return (alpha vs sector)
+]
+
 # Supported targets
 TARGETS = {
     "1d": "return_direction",   # 1 = up, 0 = down (next day)
@@ -201,7 +212,8 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_feature_columns() -> List[str]:
     """Return the ordered list of feature column names."""
-    return SENTIMENT_FEATURES + PRICE_FEATURES + TECHNICAL_FEATURES + ENGINEERED_FEATURES
+    return (SENTIMENT_FEATURES + PRICE_FEATURES + TECHNICAL_FEATURES
+            + ENGINEERED_FEATURES)
 
 
 # ---------------------------------------------------------------------------

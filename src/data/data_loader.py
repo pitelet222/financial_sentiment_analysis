@@ -750,6 +750,120 @@ def add_technical_indicators(prices: pd.DataFrame) -> pd.DataFrame:
     return prices
 
 
+# Ticker → sector ETF mapping (keep in sync with download scripts)
+TICKER_SECTOR_MAP: Dict[str, str] = {
+    "AAPL": "XLK", "MSFT": "XLK", "GOOGL": "XLK", "META": "XLK",
+    "NVDA": "XLK", "AMZN": "XLK",
+    "JPM": "XLF", "GS": "XLF", "BAC": "XLF",
+    "JNJ": "XLV", "UNH": "XLV", "PFE": "XLV",
+    "XOM": "XLE", "CVX": "XLE",
+    "CAT": "XLI", "BA": "XLI",
+    "TSLA": "XLY",
+    "WMT": "XLP", "KO": "XLP",
+}
+
+SECTOR_ETFS: List[str] = sorted(set(TICKER_SECTOR_MAP.values()))
+
+
+def load_market_context(
+    data_dir: Path = RAW_DATA_DIR,
+    start_date: str = DEFAULT_START,
+    end_date: str = DEFAULT_END,
+) -> pd.DataFrame:
+    """Load S&P 500 and sector ETF data for market context features.
+
+    Returns a DataFrame with ``date`` plus columns for SPY and each
+    sector ETF (close and daily return).
+
+    Parameters
+    ----------
+    data_dir : Path
+        Directory containing the market CSVs.
+    start_date, end_date : str
+        Date range used in the filename.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with ``date``, ``SPY_close``, ``SPY_return``, and
+        ``{ETF}_close``, ``{ETF}_return`` for each sector ETF.
+    """
+    symbols = ["SPY"] + SECTOR_ETFS
+    merged: Optional[pd.DataFrame] = None
+
+    for sym in symbols:
+        fp = data_dir / f"market_{sym}_{start_date}_to_{end_date}.csv"
+        if not fp.exists():
+            warnings.warn(f"Market file not found: {fp}. {sym} features will be NaN.")
+            continue
+        tmp = pd.read_csv(fp)
+        tmp["Date"] = pd.to_datetime(tmp["Date"], errors="coerce")
+        tmp["date"] = tmp["Date"].dt.floor("D")
+        # Keep only date + the two relevant columns
+        cols = ["date", f"{sym}_close", f"{sym}_return"]
+        tmp = tmp[[c for c in cols if c in tmp.columns]].dropna(subset=["date"])
+        if merged is None:
+            merged = tmp
+        else:
+            merged = pd.merge(merged, tmp, on="date", how="outer")
+
+    if merged is None:
+        warnings.warn("No market context files found. Market features will be NaN.")
+        cols_out = ["date"]
+        for sym in symbols:
+            cols_out += [f"{sym}_close", f"{sym}_return"]
+        return pd.DataFrame(columns=cols_out)
+
+    return merged.sort_values("date").reset_index(drop=True)
+
+
+def add_market_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add derived market context features to the merged dataset.
+
+    Computes:
+    - ``excess_return``: stock daily return minus SPY return (alpha vs market)
+    - ``sector_return``: the daily return of the stock's sector ETF
+    - ``sector_relative``: stock daily return minus sector return (alpha vs sector)
+
+    These features capture whether a stock is outperforming or
+    underperforming its benchmark and sector peers.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Merged dataset with ``daily_return``, ``ticker``, ``SPY_return``,
+        and sector ETF return columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with new market context columns added.
+    """
+    df = df.copy()
+
+    # Excess return vs market
+    if "SPY_return" in df.columns and "daily_return" in df.columns:
+        df["excess_return"] = df["daily_return"] - df["SPY_return"]
+    else:
+        df["excess_return"] = np.nan
+
+    # Map each ticker to its sector ETF return
+    df["sector_return"] = np.nan
+    for ticker, etf in TICKER_SECTOR_MAP.items():
+        ret_col = f"{etf}_return"
+        if ret_col in df.columns:
+            mask = df["ticker"] == ticker
+            df.loc[mask, "sector_return"] = df.loc[mask, ret_col].values
+
+    # Relative return vs sector
+    if "daily_return" in df.columns:
+        df["sector_relative"] = df["daily_return"] - df["sector_return"]
+    else:
+        df["sector_relative"] = np.nan
+
+    return df
+
+
 def load_vix(
     data_dir: Path = RAW_DATA_DIR,
     start_date: str = DEFAULT_START,
@@ -935,57 +1049,71 @@ def load_merged_dataset(
         tickers = DEFAULT_TICKERS
 
     # --- Step 1: Load raw data ---
-    print("[1/9] Loading news CSVs ...")
+    print("[1/10] Loading news CSVs ...")
     news = load_all_news(tickers, data_dir, start_date, end_date)
-    print(f"       -> {len(news)} articles loaded.")
+    print(f"        -> {len(news)} articles loaded.")
 
-    print("[2/9] Loading price CSVs ...")
+    print("[2/10] Loading price CSVs ...")
     prices = load_all_prices(tickers, data_dir, start_date, end_date)
-    print(f"       -> {len(prices)} price rows loaded.")
+    print(f"        -> {len(prices)} price rows loaded.")
 
     # --- Step 2-4: News processing (skip if no news) ---
     if not news.empty:
-        print("[3/9] Classifying market sessions ...")
+        print("[3/10] Classifying market sessions ...")
         news = add_session_column(news)
         session_counts = news["session"].value_counts().to_dict()
-        print(f"       -> Sessions: {session_counts}")
+        print(f"        -> Sessions: {session_counts}")
 
-        print("[4/9] Assigning articles to trading days ...")
+        print("[4/10] Assigning articles to trading days ...")
         trading_dates = prices["date"].drop_duplicates()
         news = assign_trading_day(news, trading_dates)
-        print(f"       -> {len(news)} articles matched to trading days.")
+        print(f"        -> {len(news)} articles matched to trading days.")
 
-        print("[5/9] Aggregating daily sentiment ...")
+        print("[5/10] Aggregating daily sentiment ...")
         if session_filter:
-            print(f"       (filtering to sessions: {session_filter})")
+            print(f"        (filtering to sessions: {session_filter})")
             sentiment = aggregate_by_session(news, sessions=session_filter)
         else:
             sentiment = aggregate_sentiment(news)
-        print(f"       -> {len(sentiment)} daily-sentiment rows.")
+        print(f"        -> {len(sentiment)} daily-sentiment rows.")
     else:
-        print("[3-5/9] No news articles available, skipping sentiment processing.")
+        print("[3-5/10] No news articles available, skipping sentiment processing.")
         sentiment = pd.DataFrame()
 
     # --- Step 5: Price features ---
-    print("[6/9] Computing price features ...")
+    print("[6/10] Computing price features ...")
     prices = add_price_features(prices)
 
     # --- Step 6: Technical indicators ---
-    print("[7/9] Computing technical indicators (RSI, MACD, Bollinger, ATR, etc.) ...")
+    print("[7/10] Computing technical indicators (RSI, MACD, Bollinger, ATR, etc.) ...")
     prices = add_technical_indicators(prices)
 
     # --- Step 7: VIX data ---
-    print("[8/9] Loading VIX (market-fear index) ...")
+    print("[8/10] Loading VIX (market-fear index) ...")
     vix = load_vix(data_dir, start_date, end_date)
     if not vix.empty:
         prices = pd.merge(prices, vix, on="date", how="left")
-        print(f"       -> {vix['VIX_close'].notna().sum()} VIX rows merged.")
+        print(f"        -> {vix['VIX_close'].notna().sum()} VIX rows merged.")
     else:
         prices["VIX_close"] = np.nan
-        print("       -> VIX data not available, skipping.")
+        print("        -> VIX data not available, skipping.")
 
-    # --- Step 8 & 9: Merge + rolling ---
-    print("[9/9] Merging & adding rolling sentiment ...")
+    # --- Step 8: Market context (S&P 500 + sector ETFs) ---
+    print("[9/10] Loading market context (SPY + sector ETFs) ...")
+    market = load_market_context(data_dir, start_date, end_date)
+    if not market.empty:
+        prices = pd.merge(prices, market, on="date", how="left")
+        prices = add_market_features(prices)
+        n_market = prices["SPY_return"].notna().sum()
+        print(f"        -> {n_market} market-context rows merged ({len(SECTOR_ETFS)} sector ETFs).")
+    else:
+        for col in ["SPY_close", "SPY_return", "excess_return",
+                     "sector_return", "sector_relative"]:
+            prices[col] = np.nan
+        print("        -> Market context data not available, skipping.")
+
+    # --- Step 9 & 10: Merge + rolling ---
+    print("[10/10] Merging & adding rolling sentiment ...")
     if not sentiment.empty:
         merged = merge_sentiment_with_prices(sentiment, prices)
     else:
