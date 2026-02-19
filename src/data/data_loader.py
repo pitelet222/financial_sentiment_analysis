@@ -155,10 +155,13 @@ def load_all_news(
     for ticker in tickers:
         fp = data_dir / f"news_{ticker}_{start_date}_to_{end_date}.csv"
         if not fp.exists():
-            # Fallback: find any news CSV for this ticker regardless of date range
-            candidates = sorted(data_dir.glob(f"news_{ticker}_*.csv"))
+            # Fallback: find any news CSV for this ticker regardless of date range.
+            # Pick the largest file (most articles), not the last alphabetically,
+            # because e.g. news_AAPL_2025-11-01 (150 articles) sorts after
+            # news_AAPL_2025-02-13 (4096 articles).
+            candidates = list(data_dir.glob(f"news_{ticker}_*.csv"))
             if candidates:
-                fp = candidates[-1]  # pick the most recent file
+                fp = max(candidates, key=lambda p: p.stat().st_size)
             else:
                 warnings.warn(f"News file not found: {fp}")
                 continue

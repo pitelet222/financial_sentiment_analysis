@@ -55,7 +55,6 @@ SENTIMENT_FEATURES = [
     "avg_ticker_sentiment",
     "sentiment_std",
     "sentiment_range",
-    "pct_positive",
     "pct_negative",
     "article_count",
     "sentiment_rolling_3d",
@@ -99,7 +98,9 @@ ENGINEERED_FEATURES = [
     "volatility_10d",
     "avg_return_5d",
     "avg_return_10d",
-    "sentiment_momentum",  # 3d rolling - 5d rolling
+    "sentiment_momentum",   # 3d rolling - 5d rolling
+    "sentiment_relative",   # ticker-demeaned sentiment (removes positive bias)
+    "sentiment_surprise",   # deviation from rolling mean (anomaly signal)
 ]
 
 # Supported targets
@@ -178,6 +179,21 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     # Sentiment momentum: short vs long rolling
     df["sentiment_momentum"] = (
         df["sentiment_rolling_3d"] - df["sentiment_rolling_5d"]
+    )
+
+    # Ticker-relative sentiment: removes the positive bias by demeaning
+    # per ticker. What matters isn't that news is positive — it's that
+    # news is *more positive than usual* for this stock.
+    ticker_mean = df.groupby("ticker")["avg_overall_sentiment"].transform("mean")
+    df["sentiment_relative"] = df["avg_overall_sentiment"] - ticker_mean
+
+    # Sentiment surprise: how far today's sentiment is from its recent
+    # rolling average.  A sudden shift in tone is more predictive than
+    # the absolute level.
+    df["sentiment_surprise"] = (
+        df["avg_overall_sentiment"]
+        - df.groupby("ticker")["avg_overall_sentiment"]
+              .transform(lambda s: s.rolling(5, min_periods=1).mean())
     )
 
     return df
