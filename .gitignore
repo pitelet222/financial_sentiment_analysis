@@ -16,6 +16,9 @@ data/processed/*
 data/cache/
 !data/processed/merged_*.csv
 !data/raw/edgar_*.csv
+!data/raw/prices_*.csv
+!data/raw/vix_*.csv
+!data/raw/news_*.csv
 !data/**/.gitkeep
 
 # Models
