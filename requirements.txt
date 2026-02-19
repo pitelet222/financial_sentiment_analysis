@@ -32,5 +32,6 @@ feedparser                # RSS feed parsing for live news pipeline
 python-dotenv             # Load API keys from .env file
 
 # --- Dashboard ---
-streamlit                 # Interactive web dashboard
+streamlit>=1.45.0         # Interactive web dashboard (>=1.45 for Altair v5 compat)
+altair>=5,<6              # Vega-Lite charts — must match Streamlit's expected API
 plotly                    # Interactive charts for Streamlit
