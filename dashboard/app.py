@@ -748,7 +748,8 @@ st.caption(
 def load_model() -> SentimentAnalyzer:
     """Load the sentiment model once (singleton across reruns)."""
     model_path = Path(__file__).resolve().parent.parent / "models" / "saved_models" / "finbert_finetuned"
-    if model_path.exists():
+    # Check for actual model weights (config.json), not just the directory
+    if (model_path / "config.json").exists():
         return SentimentAnalyzer.load(model_path)
     return SentimentAnalyzer()  # fallback to base ProsusAI/finbert
 
